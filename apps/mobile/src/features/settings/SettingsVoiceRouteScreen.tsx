@@ -38,6 +38,7 @@ import type { EnvironmentId } from "@t3tools/contracts";
 import { ThreadSwipeable } from "../home/thread-swipe-actions";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
+import { type SettingsRowDrag, useSettingsDragOrder } from "./components/settingsDragOrder";
 import { SettingsScreen } from "./components/SettingsScreen";
 import { SettingsSection } from "./components/SettingsSection";
 import {
@@ -246,12 +247,6 @@ export function SettingsVoiceRouteScreen() {
     AsyncResult.isSuccess(preferencesResult) ? preferencesResult.value.microphones : undefined,
   );
   const { permission, request: requestPermission } = useMicrophonePermission();
-  const [drag, setDrag] = useState<{ readonly key: string; readonly translation: number } | null>(
-    null,
-  );
-  const [rowHeight, setRowHeight] = useState(0);
-  // Each drop remounts the rows so the new order and the cleared offsets land in one frame.
-  const [drops, setDrops] = useState(0);
 
   // Transforms apply to the stored order, so a device recorded meanwhile is kept.
   const move = (key: string, steps: number) =>
@@ -274,15 +269,8 @@ export function SettingsVoiceRouteScreen() {
         ),
       }),
     });
-  const dropSteps = (from: number, translation: number) =>
-    rowHeight === 0
-      ? 0
-      : Math.min(entries.length - 1, Math.max(0, from + Math.round(translation / rowHeight))) -
-        from;
-
-  const dragFrom =
-    drag === null ? -1 : entries.findIndex((entry) => microphoneEntryKey(entry) === drag.key);
-  const dragTo = drag === null ? -1 : dragFrom + dropSteps(dragFrom, drag.translation);
+  const keys = entries.map((entry) => microphoneEntryKey(entry));
+  const dragOrder = useSettingsDragOrder(keys, (from, to) => move(keys[from]!, to - from));
 
   return (
     <SettingsScreen title={gt("Voice")}>
@@ -363,32 +351,14 @@ export function SettingsVoiceRouteScreen() {
         <SettingsSection title={gt("Preferred order")}>
           {entries.map((entry, index) => {
             const key = microphoneEntryKey(entry);
-            const shift =
-              dragFrom === -1 || index === dragFrom
-                ? 0
-                : dragFrom < dragTo && index > dragFrom && index <= dragTo
-                  ? -rowHeight
-                  : dragFrom > dragTo && index < dragFrom && index >= dragTo
-                    ? rowHeight
-                    : 0;
             return (
               <MicrophoneRow
-                key={`${key}:${drops}`}
+                key={dragOrder.rowKey(key)}
                 entry={entry}
                 position={index + 1}
                 count={entries.length}
                 reorderable={ready}
-                offset={index === dragFrom ? (drag?.translation ?? 0) : shift}
-                lifted={index === dragFrom}
-                onHeight={setRowHeight}
-                onDragStart={() => setDrag({ key, translation: 0 })}
-                onDragMove={(translation) => setDrag({ key, translation })}
-                onDragEnd={(translation, cancelled) => {
-                  setDrag(null);
-                  setDrops((count) => count + 1);
-                  if (!cancelled) move(key, dropSteps(index, translation));
-                }}
-                onStep={(direction) => move(key, direction === "up" ? -1 : 1)}
+                drag={dragOrder.rowDrag(key, index)}
                 onForget={isMicrophoneDevice(entry) ? () => forget(key) : undefined}
               />
             );
@@ -413,18 +383,13 @@ function MicrophoneRow(props: {
   readonly position: number;
   readonly count: number;
   readonly reorderable: boolean;
-  readonly offset: number;
-  readonly lifted: boolean;
-  readonly onHeight: (height: number) => void;
-  readonly onDragStart: () => void;
-  readonly onDragMove: (translation: number) => void;
-  readonly onDragEnd: (translation: number, cancelled: boolean) => void;
-  readonly onStep: (direction: "up" | "down") => void;
+  readonly drag: SettingsRowDrag;
   readonly onForget: (() => void) | undefined;
 }) {
   const gt = useGT();
   const m = useMessages();
-  const { lifted, offset, entry, onForget } = props;
+  const { entry, onForget } = props;
+  const { lifted, offset } = props.drag;
   const kind = KINDS[entry.kind];
   const title = isMicrophoneDevice(entry) ? entry.name : m(kind.row);
   const { width: windowWidth } = useWindowDimensions();
@@ -470,10 +435,10 @@ function MicrophoneRow(props: {
           title={title}
           canMoveUp={props.position > 1}
           canMoveDown={props.position < props.count}
-          onStart={props.onDragStart}
-          onMove={props.onDragMove}
-          onEnd={props.onDragEnd}
-          onStep={props.onStep}
+          onStart={props.drag.onDragStart}
+          onMove={props.drag.onDragMove}
+          onEnd={props.drag.onDragEnd}
+          onStep={props.drag.onStep}
         />
       ) : null}
     </View>
@@ -481,7 +446,7 @@ function MicrophoneRow(props: {
   return (
     <Reanimated.View
       style={style}
-      onLayout={(event) => props.onHeight(event.nativeEvent.layout.height)}
+      onLayout={(event) => props.drag.onHeight(event.nativeEvent.layout.height)}
       className={cn(
         props.position > 1 && !lifted && "border-t border-border-subtle",
         lifted && "bg-grouped-card shadow-md",

@@ -35,6 +35,7 @@ import { useAtomCommand } from "../../state/use-atom-command";
 import { connectionTone } from "../connection/connectionTone";
 import { ListActionRow as SettingsActionRow } from "../../components/ui/ListActionRow";
 import { SettingsDragHandle } from "./components/SettingsDragHandle";
+import { type SettingsRowDrag, useSettingsDragOrder } from "./components/settingsDragOrder";
 import { SettingsSection } from "./components/SettingsSection";
 
 const ICON_SIZE = Platform.OS === "android" ? 24 : 22;
@@ -78,12 +79,18 @@ export function EnvironmentRoutesSection({
   // Dropped during render so a stale order never outlives the save it was for.
   if (pending !== null && shownPending === null) setPending(null);
   const order = shownPending ?? savedIds;
-  const [drag, setDrag] = useState<{ readonly id: string; readonly translation: number } | null>(
-    null,
-  );
-  const [heights, setHeights] = useState<ReadonlyMap<string, number>>(() => new Map());
-  // Remount dropped rows so data order and cleared drag offsets change together without flashing.
-  const [drops, setDrops] = useState(0);
+  const commit = (next: ReadonlyArray<string>) => {
+    setPending(next);
+    void reorder({ environmentId, routeIds: next }).then((result) => {
+      if (result._tag === "Failure") setPending(null);
+    });
+  };
+  const dragOrder = useSettingsDragOrder(order, (from, to) => {
+    const next = [...order];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved!);
+    commit(next);
+  });
   if (entry === undefined) return null;
 
   const byId = new Map(saved.map((route) => [connectionRouteId(route.target), route]));
@@ -91,31 +98,6 @@ export function EnvironmentRoutesSection({
   const activeRouteId =
     connected && Option.isSome(prepared) ? connectionRouteId(prepared.value.target) : null;
 
-  const commit = (next: ReadonlyArray<string>) => {
-    setPending(next);
-    void reorder({ environmentId, routeIds: next }).then((result) => {
-      if (result._tag === "Failure") setPending(null);
-    });
-  };
-  const move = (from: number, to: number) => {
-    if (to < 0 || to >= order.length || from === to) return;
-    const next = [...order];
-    const [moved] = next.splice(from, 1);
-    next.splice(to, 0, moved!);
-    commit(next);
-  };
-  const dropIndex = (from: number, translation: number) => {
-    const step = translation > 0 ? 1 : -1;
-    let to = from;
-    let remaining = Math.abs(translation);
-    while (to + step >= 0 && to + step < order.length) {
-      const next = heights.get(order[to + step]!) ?? 0;
-      if (next === 0 || remaining < next / 2) break;
-      remaining -= next;
-      to += step;
-    }
-    return to;
-  };
   const confirmRemove = (route: ConnectionRoute) =>
     Dialog.alert(
       gt("Remove {route}?", { route: connectionRouteLabelText(route, messages) }),
@@ -130,9 +112,6 @@ export function EnvironmentRoutesSection({
         },
       ],
     );
-
-  const dragFrom = drag === null ? -1 : order.indexOf(drag.id);
-  const dragTo = drag === null ? -1 : dropIndex(dragFrom, drag.translation);
 
   return (
     <SettingsSection
@@ -192,39 +171,16 @@ export function EnvironmentRoutesSection({
       ) : null}
       {routes.map((route, index) => {
         const id = connectionRouteId(route.target);
-        const lifted = drag === null ? 0 : (heights.get(drag.id) ?? 0);
-        const shift =
-          dragFrom === -1 || index === dragFrom
-            ? 0
-            : dragFrom < dragTo && index > dragFrom && index <= dragTo
-              ? -lifted
-              : dragFrom > dragTo && index < dragFrom && index >= dragTo
-                ? lifted
-                : 0;
         return (
           <RouteRow
-            key={`${id}:${drops}`}
+            key={dragOrder.rowKey(id)}
             route={route}
             position={index + 1}
             count={routes.length}
             inUse={id === activeRouteId}
             refused={refusedRouteIds.includes(id)}
             editing={editing}
-            offset={index === dragFrom ? (drag?.translation ?? 0) : shift}
-            lifted={index === dragFrom}
-            onHeight={(height) =>
-              setHeights((current) =>
-                current.get(id) === height ? current : new Map(current).set(id, height),
-              )
-            }
-            onDragStart={() => setDrag({ id, translation: 0 })}
-            onDragMove={(translation) => setDrag({ id, translation })}
-            onDragEnd={(translation, cancelled) => {
-              setDrag(null);
-              setDrops((count) => count + 1);
-              if (!cancelled) move(index, dropIndex(index, translation));
-            }}
-            onStep={(direction) => move(index, direction === "up" ? index - 1 : index + 1)}
+            drag={dragOrder.rowDrag(id, index)}
             // A learned route would be learned again, so it is only reordered.
             onRemove={
               routes.length > 1 && !isLearned(route) ? () => confirmRemove(route) : undefined
@@ -244,18 +200,13 @@ function RouteRow(props: {
   readonly inUse: boolean;
   readonly refused: boolean;
   readonly editing: boolean;
-  readonly offset: number;
-  readonly lifted: boolean;
-  readonly onHeight: (height: number) => void;
-  readonly onDragStart: () => void;
-  readonly onDragMove: (translation: number) => void;
-  readonly onDragEnd: (translation: number, cancelled: boolean) => void;
-  readonly onStep: (direction: "up" | "down") => void;
+  readonly drag: SettingsRowDrag;
   readonly onRemove: (() => void) | undefined;
 }) {
   const gt = useGT();
   const messages = useMessages();
-  const { route, lifted, offset } = props;
+  const { route } = props;
+  const { lifted, offset } = props.drag;
   const label = connectionRouteLabelText(route, messages);
   const address = connectionRouteAddress(route);
   const refusedHint =
@@ -275,7 +226,7 @@ function RouteRow(props: {
   return (
     <Reanimated.View
       style={style}
-      onLayout={(event) => props.onHeight(event.nativeEvent.layout.height)}
+      onLayout={(event) => props.drag.onHeight(event.nativeEvent.layout.height)}
       className={cn("flex-row items-center gap-4 pl-4", lifted && "bg-grouped-card shadow-md")}
     >
       {props.editing && props.onRemove ? (
@@ -353,10 +304,10 @@ function RouteRow(props: {
           title={label}
           canMoveUp={props.position > 1}
           canMoveDown={props.position < props.count}
-          onStart={props.onDragStart}
-          onMove={props.onDragMove}
-          onEnd={props.onDragEnd}
-          onStep={props.onStep}
+          onStart={props.drag.onDragStart}
+          onMove={props.drag.onDragMove}
+          onEnd={props.drag.onDragEnd}
+          onStep={props.drag.onStep}
         />
       ) : null}
     </Reanimated.View>

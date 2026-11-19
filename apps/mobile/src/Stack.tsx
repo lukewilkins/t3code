@@ -106,7 +106,10 @@ import {
 } from "./features/settings/SettingsSourceControlDetailRouteScreens";
 import { SettingsEnvironmentsRouteScreen } from "./features/settings/SettingsEnvironmentsRouteScreen";
 import { SettingsFollowUpRouteScreen } from "./features/settings/SettingsFollowUpRouteScreen";
-import { SettingsPipelinesRouteScreen } from "./features/settings/SettingsPipelinesRouteScreen";
+import {
+  SettingsPipelineEditRouteScreen,
+  SettingsPipelinesRouteScreen,
+} from "./features/settings/SettingsPipelinesRouteScreen";
 import { SettingsLanguageRouteScreen } from "./features/settings/SettingsLanguageRouteScreen";
 import {
   SettingsEnvironmentMaintenanceRouteScreen,
@@ -191,6 +194,7 @@ const ROUTE_TITLES: Readonly<Record<string, string>> = {
   SettingsFollowUp: msg("Chat", { $context: "noun, settings page title" }),
   SettingsScheduledTasks: msg("Scheduled tasks"),
   SettingsPipelines: msg("Pipelines"),
+  SettingsPipelineEdit: msg("Pipeline"),
   SettingsScheduledTaskNew: msg("New scheduled task"),
   SettingsScheduledTaskEdit: msg("Edit scheduled task"),
   SettingsScheduledTaskBranch: msg("Base branch"),
@@ -366,6 +370,10 @@ const SETTINGS_SCREENS = {
   SettingsPipelines: createNativeStackScreen({
     screen: SettingsPipelinesRouteScreen,
     linking: "settings/pipelines",
+    options: settingsPage(),
+  }),
+  SettingsPipelineEdit: createNativeStackScreen({
+    screen: SettingsPipelineEditRouteScreen,
     options: settingsPage(),
   }),
   SettingsScheduledTasks: createNativeStackScreen({
