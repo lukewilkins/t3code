@@ -406,8 +406,9 @@ const make = Effect.gen(function* () {
   );
 
   const settle = Effect.fn("PipelineService.settle")(function* (threadId: ThreadId) {
-    // Every ended run on every thread lands here; only pipeline threads take a lock.
-    if ((yield* getRun(threadId))?.status !== "ready") return;
+    // Every ended run on every thread lands here; only threads with an active pipeline take a
+    // lock. Checking "ready" here would race a handoff that is mid-write.
+    if (!isPipelineRunActive(yield* getRun(threadId))) return;
     yield* withThreadLock(threadId)(
       Effect.gen(function* () {
         const run = yield* getRun(threadId);
