@@ -340,7 +340,7 @@ A phase with its own model only applies to that phase. The next phase set to Def
 
 To start one, pick a pipeline from the composer and write the task. You can also ask the agent to move an existing thread into a pipeline. It hands its current context to the first phase.
 
-When a phase finishes, the agent writes a handoff for the next phase. A later phase can instead send the work back to an earlier one, such as a review asking for fixes. Going back follows the sending phase's **Advance automatically** setting, and after three automatic returns the thread waits for you, so a review that never approves can't loop forever. A banner above the composer shows the current phase. While a phase waits for you, you can keep chatting to refine the work, then choose **Continue**, or ask the agent to continue. **Cancel** stops the pipeline and leaves the thread as it is.
+When a phase finishes, the agent writes a handoff for the next phase. A later phase can instead send the work back to an earlier one, such as a review asking for fixes. Going back follows the sending phase's **Advance automatically** setting, and after three automatic returns the thread waits for you, so a review that never approves can't loop forever. If a phase's turn fails or is interrupted after its handoff, the thread also waits for you. A banner above the composer shows the current phase. While a phase waits for you, you can keep chatting to refine the work, then choose **Continue**, or ask the agent to continue. **Cancel** stops the pipeline and leaves the thread as it is.
 
 ## Context in your message
 

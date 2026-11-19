@@ -102,11 +102,11 @@ describe("decideAfterRunCompleted", () => {
 
 describe("planAdvance", () => {
   it("returns null past the last phase", () => {
-    expect(planAdvance(makeRun({ phaseIndex: 2 }), "h", "now")).toBeNull();
+    expect(planAdvance(makeRun({ phaseIndex: 2 }), "h", "now", true)).toBeNull();
   });
 
   it("moves to the next phase with a fresh-context send carrying the handoff", () => {
-    const plan = planAdvance(makeRun(), "the notes", "2026-02-02T00:00:00.000Z");
+    const plan = planAdvance(makeRun(), "the notes", "2026-02-02T00:00:00.000Z", true);
     expect(plan?.run).toMatchObject({
       phaseIndex: 1,
       status: "running",
@@ -125,7 +125,7 @@ describe("planAdvance", () => {
       returnTo: 0,
       baseModelSelection: model("opus"),
     });
-    const plan = planAdvance(run, "fix the retry path", "now");
+    const plan = planAdvance(run, "fix the retry path", "now", true);
     expect(plan?.run).toMatchObject({ phaseIndex: 0, step: 2, returnTo: null, returnCount: 1 });
     // Work was first sent at step 1, so revisiting it must not reuse that id.
     expect(plan?.send.key).toBe("pipeline:rk:2");
@@ -162,7 +162,7 @@ describe("planAdvance", () => {
       expected: undefined,
     },
   ])("model selection: $name", ({ phases, base: baseModelSelection, expected }) => {
-    const plan = planAdvance(makeRun({ phases, baseModelSelection }), "h", "now");
+    const plan = planAdvance(makeRun({ phases, baseModelSelection }), "h", "now", true);
     expect(plan?.send.modelSelection).toEqual(expected);
   });
 });

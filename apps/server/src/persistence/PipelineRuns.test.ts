@@ -6,12 +6,11 @@ import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 
 import Migration0100 from "./Migrations/100_PipelineRuns.ts";
-import Migration0101 from "./Migrations/101_PipelineRunReturns.ts";
 import * as PipelineRuns from "./PipelineRuns.ts";
 
 const layer = PipelineRuns.layer.pipe(
   Layer.provideMerge(
-    Layer.effectDiscard(Migration0100.pipe(Effect.andThen(Migration0101))).pipe(
+    Layer.effectDiscard(Migration0100).pipe(
       Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
     ),
   ),

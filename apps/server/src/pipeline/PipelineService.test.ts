@@ -14,6 +14,7 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as Effect from "effect/Effect";
 import * as Exit from "effect/Exit";
+import * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as Ref from "effect/Ref";
@@ -23,7 +24,6 @@ import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import Migration0100 from "../persistence/Migrations/100_PipelineRuns.ts";
-import Migration0101 from "../persistence/Migrations/101_PipelineRunReturns.ts";
 import * as PipelineRuns from "../persistence/PipelineRuns.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PipelineService from "./PipelineService.ts";
@@ -61,6 +61,8 @@ interface ThreadState {
   runs: ReadonlyArray<{ readonly id: string; readonly ordinal: number; readonly status: string }>;
   assistantText: string | null;
   failSends: boolean;
+  /** Message ids the thread already holds, as if a failed send had committed. */
+  committedMessageIds: ReadonlyArray<string>;
 }
 
 const makeHarness = Effect.fn("makePipelineHarness")(function* () {
@@ -71,6 +73,7 @@ const makeHarness = Effect.fn("makePipelineHarness")(function* () {
     runs: [{ id: "run-1", ordinal: 1, status: "completed" }],
     assistantText: null,
     failSends: false,
+    committedMessageIds: [],
   };
   const thread = {
     id: threadId,
@@ -81,7 +84,7 @@ const makeHarness = Effect.fn("makePipelineHarness")(function* () {
   const dependencies = Layer.mergeAll(
     PipelineRuns.layer.pipe(
       Layer.provideMerge(
-        Layer.effectDiscard(Migration0100.pipe(Effect.andThen(Migration0101))).pipe(
+        Layer.effectDiscard(Migration0100).pipe(
           Layer.provideMerge(NodeSqliteClient.layer({ filename: ":memory:" })),
         ),
       ),
@@ -101,15 +104,19 @@ const makeHarness = Effect.fn("makePipelineHarness")(function* () {
     }),
     Layer.mock(ProjectionStore.ProjectionStoreV2)({
       getThread: () => Effect.succeed(thread),
-      getThreadRecords: (_threadId, fields) =>
+      getThreadRecords: (_threadId, fields, filter) =>
         Effect.succeed(
           (fields.includes("messages" as never)
             ? {
                 thread,
                 messages:
-                  state.assistantText === null
-                    ? []
-                    : [{ role: "assistant", text: state.assistantText }],
+                  filter?.messageIds !== undefined
+                    ? filter.messageIds
+                        .filter((id) => state.committedMessageIds.includes(id))
+                        .map((id) => ({ id, role: "user", text: "" }))
+                    : state.assistantText === null
+                      ? []
+                      : [{ role: "assistant", text: state.assistantText }],
               }
             : {
                 thread,
@@ -246,7 +253,8 @@ describe("PipelineService", () => {
       yield* pipelines.advance({ threadId, phaseIndex: 2 });
       const run = yield* runOf(repository);
       assert.strictEqual(run.phaseIndex, 1);
-      assert.strictEqual(run.returnCount, 1);
+      // A user-approved return doesn't count toward the automatic cap.
+      assert.strictEqual(run.returnCount, 0);
       const keys = (yield* Ref.get(sent)).map((input) => input.messageId);
       assert.strictEqual(new Set(keys).size, keys.length);
       assert.include((yield* Ref.get(sent)).at(-1)?.text, "Handoff from Review");
@@ -257,8 +265,9 @@ describe("PipelineService", () => {
     Effect.gen(function* () {
       const { pipelines, repository, sent } = yield* makeHarness();
       yield* pipelines.attach({ threadId, pipelineRef: "Delivery" });
-      const results = yield* Effect.all(
-        [0, 0].map((phaseIndex) => Effect.exit(pipelines.advance({ threadId, phaseIndex }))),
+      const results = yield* Effect.forEach(
+        [0, 0],
+        (phaseIndex) => Effect.exit(pipelines.advance({ threadId, phaseIndex })),
         { concurrency: "unbounded" },
       );
       assert.strictEqual(results.filter(Exit.isSuccess).length, 1);
@@ -289,6 +298,39 @@ describe("PipelineService", () => {
         assert.strictEqual(keys.length, 2);
         assert.notStrictEqual(keys[1], firstKey);
         assert.strictEqual((yield* runOf(repository)).phaseIndex, 2);
+      }),
+  );
+
+  it.effect("a send that reports failure after its message committed still moves the run on", () =>
+    Effect.gen(function* () {
+      const { pipelines, repository, state } = yield* makeHarness();
+      const attached = yield* pipelines.attach({ threadId, pipelineRef: "Delivery" });
+      state.failSends = true;
+      state.committedMessageIds = [`pipeline:${attached.runKey}:1`];
+      yield* pipelines.advance({ threadId, phaseIndex: 0 });
+      assert.strictEqual((yield* runOf(repository)).phaseIndex, 1);
+    }),
+  );
+
+  it.effect(
+    "Continue waits while a turn runs, and a failed turn after a handoff waits for the user",
+    () =>
+      Effect.gen(function* () {
+        const { pipelines, repository, sent, state } = yield* makeHarness();
+        yield* pipelines.attach({ threadId, pipelineRef: "Delivery" });
+        state.runs = [{ id: "run-1", ordinal: 1, status: "running" }];
+        assert.isTrue(
+          Exit.isFailure(yield* Effect.exit(pipelines.advance({ threadId, phaseIndex: 0 }))),
+        );
+
+        state.runs = [{ id: "run-1", ordinal: 1, status: "completed" }];
+        yield* pipelines.advance({ threadId, phaseIndex: 0 });
+        // Build auto-advances, but its turn failed after handing off.
+        yield* pipelines.recordHandoff(threadId, "half built");
+        state.runs = [{ id: "run-2", ordinal: 2, status: "failed" }];
+        yield* pipelines.settle(threadId);
+        assert.strictEqual((yield* runOf(repository)).status, "awaiting_approval");
+        assert.strictEqual((yield* Ref.get(sent)).length, 1);
       }),
   );
 
@@ -335,7 +377,7 @@ describe("PipelineService", () => {
       };
       yield* repository.put(handedOff);
 
-      yield* Effect.scoped(pipelines.startWorker());
+      yield* Effect.scoped(pipelines.startWorker().pipe(Effect.flatMap(Fiber.join)));
       assert.strictEqual((yield* runOf(repository)).phaseIndex, 2);
       assert.include((yield* Ref.get(sent))[0]?.text, "built offline");
     }),

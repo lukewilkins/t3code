@@ -2,6 +2,7 @@ import {
   CommandId,
   MessageId,
   type ModelSelection,
+  type OrchestrationV2RunStatus,
   type OrchestrationV2Actor,
   type OrchestrationV2CreationSource,
   type Pipeline,
@@ -16,6 +17,7 @@ import * as Context from "effect/Context";
 import * as SecureRandom from "effect/crypto/SecureRandom";
 import * as DateTime from "effect/DateTime";
 import * as Effect from "effect/Effect";
+import type * as Fiber from "effect/Fiber";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
 import * as PubSub from "effect/PubSub";
@@ -27,7 +29,7 @@ import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import * as PipelineRuns from "../persistence/PipelineRuns.ts";
-import { forkParked } from "../serverActivation.ts";
+import { forkParkedFiber } from "../serverActivation.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import {
   decideAfterRunCompleted,
@@ -77,10 +79,10 @@ export class PipelineService extends Context.Service<
     /** Decides what a completed run means for the thread's pipeline, and acts on it. */
     readonly settle: (threadId: ThreadId) => Effect.Effect<void, PipelineError>;
     /**
-     * Moves pipelines on as their phases' runs complete, after settling phases that handed off
-     * while the server was down.
+     * Once the server is active, moves pipelines on as their phases' runs end, and settles phases
+     * that handed off while it was down. The fiber finishes after that sweep.
      */
-    readonly startWorker: () => Effect.Effect<void, never, Scope.Scope>;
+    readonly startWorker: () => Effect.Effect<Fiber.Fiber<void>, never, Scope.Scope>;
   }
 >()("t3/pipeline/PipelineService") {}
 
@@ -98,6 +100,13 @@ const pipelineError = (reason: PipelineError["reason"], message: string) =>
 const storageError = (cause: unknown) =>
   pipelineError("storage", `Pipeline storage failed: ${String(cause)}`);
 
+const ENDED_RUN_STATUSES: ReadonlyArray<OrchestrationV2RunStatus> = [
+  "completed",
+  "failed",
+  "interrupted",
+  "cancelled",
+];
+
 const make = Effect.gen(function* () {
   const repository = yield* PipelineRuns.PipelineRunRepository;
   const settings = yield* ServerSettings.ServerSettingsService;
@@ -106,8 +115,20 @@ const make = Effect.gen(function* () {
   const orchestrator = yield* Orchestrator.OrchestratorV2;
   const random = yield* SecureRandom.SecureRandom;
   const changed = yield* PubSub.unbounded<ThreadId>();
-  // Every mutation reads the row, decides and writes; one at a time keeps a double click to one advance.
-  const lock = yield* Semaphore.make(1);
+  // Each mutation reads the thread's row, decides and writes; one at a time per thread keeps a
+  // double click to one advance without one thread's slow send holding up the others.
+  const locks = new Map<ThreadId, Semaphore.Semaphore>();
+  const withThreadLock =
+    (threadId: ThreadId) =>
+    <A, E, R>(effect: Effect.Effect<A, E, R>) =>
+      Effect.suspend(() => {
+        let lock = locks.get(threadId);
+        if (lock === undefined) {
+          lock = Semaphore.makeUnsafe(1);
+          locks.set(threadId, lock);
+        }
+        return lock.withPermits(1)(effect);
+      });
 
   const nowIso = DateTime.now.pipe(Effect.map(DateTime.formatIso));
 
@@ -199,14 +220,26 @@ const make = Effect.gen(function* () {
         ...SERVER_SENDER,
       })
       .pipe(
-        Effect.mapError((cause) =>
-          pipelineError("dispatch", `Could not send the next phase: ${cause.message}`),
+        // A send can fail after its message committed; that phase is already on its way.
+        Effect.catch((cause) =>
+          projections
+            .getThreadRecords(threadId, ["messages"], {
+              messageIds: [MessageId.make(phaseSend.key)],
+            })
+            .pipe(
+              Effect.orElseSucceed(() => ({ messages: [] })),
+              Effect.flatMap(({ messages }) =>
+                messages.length > 0
+                  ? Effect.void
+                  : pipelineError("dispatch", `Could not send the next phase: ${cause.message}`),
+              ),
+            ),
         ),
       );
   });
 
   const attach: PipelineService["Service"]["attach"] = (input) =>
-    lock.withPermits(1)(
+    withThreadLock(input.threadId)(
       Effect.gen(function* () {
         const run = yield* newRun({
           threadId: input.threadId,
@@ -218,7 +251,7 @@ const make = Effect.gen(function* () {
     );
 
   const start: PipelineService["Service"]["start"] = (input) =>
-    lock.withPermits(1)(
+    withThreadLock(input.threadId)(
       Effect.gen(function* () {
         const thread = yield* projections
           .getThread(input.threadId)
@@ -238,7 +271,7 @@ const make = Effect.gen(function* () {
     handoff,
     returnTo,
   ) =>
-    lock.withPermits(1)(
+    withThreadLock(threadId)(
       Effect.gen(function* () {
         const run = yield* requireActiveRun(threadId);
         const target = returnTo === undefined ? null : findEarlierPhase(run, returnTo);
@@ -276,13 +309,14 @@ const make = Effect.gen(function* () {
   const advanceLocked = Effect.fn("PipelineService.advanceLocked")(function* (
     threadId: ThreadId,
     expectedPhaseIndex: number | undefined,
+    automatic: boolean,
   ) {
     const run = yield* requireActiveRun(threadId);
     if (expectedPhaseIndex !== undefined && expectedPhaseIndex !== run.phaseIndex) {
       return yield* pipelineError("invalid-state", "The pipeline already moved past that phase.");
     }
     const handoff = run.handoff ?? (yield* fallbackHandoff(threadId));
-    const plan = planAdvance(run, handoff, yield* nowIso);
+    const plan = planAdvance(run, handoff, yield* nowIso, automatic);
     if (plan === null) {
       return yield* putRun({ ...run, status: "completed", updatedAt: yield* nowIso });
     }
@@ -291,10 +325,21 @@ const make = Effect.gen(function* () {
   });
 
   const advance: PipelineService["Service"]["advance"] = (input) =>
-    lock.withPermits(1)(advanceLocked(input.threadId, input.phaseIndex));
+    withThreadLock(input.threadId)(
+      Effect.gen(function* () {
+        // Advancing mid-turn would let that turn's handoff land on the next phase.
+        if ((yield* threadActivity(input.threadId)).busy) {
+          return yield* pipelineError(
+            "invalid-state",
+            "The current turn is still running. End the phase with t3_pipeline_handoff, or continue once the turn finishes.",
+          );
+        }
+        return yield* advanceLocked(input.threadId, input.phaseIndex, false);
+      }),
+    );
 
   const cancel: PipelineService["Service"]["cancel"] = (threadId) =>
-    lock.withPermits(1)(
+    withThreadLock(threadId)(
       Effect.gen(function* () {
         const run = yield* requireActiveRun(threadId);
         const cancelled = yield* putRun({ ...run, status: "cancelled", updatedAt: yield* nowIso });
@@ -317,57 +362,64 @@ const make = Effect.gen(function* () {
       }),
     );
 
-  const hasOutstandingWork = Effect.fn("PipelineService.hasOutstandingWork")(function* (
-    threadId: ThreadId,
-  ) {
-    const thread = yield* projections.getThread(threadId);
-    const records = yield* projections.getThreadRecords(
-      threadId,
-      ["runs", "providerThreads", "runtimeRequests", "turnItems"],
-      {
-        runStatuses: ["queued", "preparing", "starting", "running", "rolled_back"],
-        includeLatestRun: true,
-        turnItemStatuses: ["pending", "running", "waiting"],
-        runtimeRequestStatuses: ["pending"],
-        ...(thread.activeProviderThreadId === null
-          ? {}
-          : { providerThreadIds: [thread.activeProviderThreadId] }),
-      },
-    );
-    const live = records.runs.filter((run) => run.status !== "rolled_back");
-    if (
-      live.some((run) => ["queued", "preparing", "starting", "running"].includes(run.status)) ||
-      records.runtimeRequests.some((request) => request.status === "pending")
-    ) {
-      return true;
-    }
-    const latestRun = live.reduce<(typeof live)[number] | null>(
-      (latest, run) => (latest === null || run.ordinal > latest.ordinal ? run : latest),
-      null,
-    );
-    // Background work wakes the thread again; the phase moves on after that run instead.
-    return (
-      derivePendingBackgroundWork({
-        latestRun,
-        runs: live,
-        providerThreads: records.providerThreads,
-        turnItems: records.turnItems,
-        activeProviderThreadId: thread.activeProviderThreadId,
-      }).length > 0
-    );
-  });
+  /** Whether the thread still has work in flight, and how its latest run ended. */
+  const threadActivity = Effect.fn("PipelineService.threadActivity")(
+    function* (threadId: ThreadId) {
+      const thread = yield* projections.getThread(threadId);
+      const records = yield* projections.getThreadRecords(
+        threadId,
+        ["runs", "providerThreads", "runtimeRequests", "turnItems"],
+        {
+          runStatuses: ["queued", "preparing", "starting", "running", "rolled_back"],
+          includeLatestRun: true,
+          turnItemStatuses: ["pending", "running", "waiting"],
+          runtimeRequestStatuses: ["pending"],
+          ...(thread.activeProviderThreadId === null
+            ? {}
+            : { providerThreadIds: [thread.activeProviderThreadId] }),
+        },
+      );
+      const live = records.runs.filter((run) => run.status !== "rolled_back");
+      const latestRun = live.reduce<(typeof live)[number] | null>(
+        (latest, run) => (latest === null || run.ordinal > latest.ordinal ? run : latest),
+        null,
+      );
+      const latestRunStatus = latestRun?.status ?? null;
+      if (
+        live.some((run) => ["queued", "preparing", "starting", "running"].includes(run.status)) ||
+        records.runtimeRequests.some((request) => request.status === "pending")
+      ) {
+        return { busy: true, latestRunStatus };
+      }
+      // Background work wakes the thread again; the phase moves on after that run instead.
+      const busy =
+        derivePendingBackgroundWork({
+          latestRun,
+          runs: live,
+          providerThreads: records.providerThreads,
+          turnItems: records.turnItems,
+          activeProviderThreadId: thread.activeProviderThreadId,
+        }).length > 0;
+      return { busy, latestRunStatus };
+    },
+    Effect.mapError((cause) => pipelineError("storage", `Could not read the thread: ${cause}`)),
+  );
 
   const settle = Effect.fn("PipelineService.settle")(function* (threadId: ThreadId) {
-    yield* lock.withPermits(1)(
+    yield* withThreadLock(threadId)(
       Effect.gen(function* () {
         const run = yield* getRun(threadId);
         if (run === null || run.status !== "ready") return;
-        const outstanding = yield* hasOutstandingWork(threadId).pipe(
-          Effect.mapError((cause) =>
-            pipelineError("storage", `Could not read the thread: ${cause}`),
-          ),
-        );
-        const decision = decideAfterRunCompleted(run, outstanding);
+        const activity = yield* threadActivity(threadId);
+        const decided = decideAfterRunCompleted(run, activity.busy);
+        // A phase whose turn failed or was interrupted after handing off waits for the user.
+        const decision =
+          decided !== "wait" &&
+          decided !== "none" &&
+          activity.latestRunStatus !== null &&
+          activity.latestRunStatus !== "completed"
+            ? "await_approval"
+            : decided;
         switch (decision) {
           case "complete":
             yield* putRun({ ...run, status: "completed", updatedAt: yield* nowIso });
@@ -376,8 +428,8 @@ const make = Effect.gen(function* () {
             yield* putRun({ ...run, status: "awaiting_approval", updatedAt: yield* nowIso });
             return;
           case "advance":
-            // A failed automatic send waits for approval, so Continue retries it.
-            yield* advanceLocked(threadId, run.phaseIndex).pipe(
+            // If the automatic advance fails, the run waits for approval, so Continue retries it.
+            yield* advanceLocked(threadId, run.phaseIndex, true).pipe(
               Effect.tapError(() =>
                 Effect.flatMap(nowIso, (updatedAt) =>
                   putRun({ ...run, status: "awaiting_approval", updatedAt }),
@@ -399,18 +451,23 @@ const make = Effect.gen(function* () {
     );
 
   const startWorker = Effect.fn("PipelineService.startWorker")(function* () {
-    yield* forkParked(
-      Stream.runForEach(orchestrator.streamDomainEvents, (event) =>
-        event.type === "run.updated" && event.payload.status === "completed"
-          ? settleLogged(event.threadId)
-          : Effect.void,
-      ),
+    return yield* forkParkedFiber(
+      Effect.gen(function* () {
+        // Each settle runs on its own fiber, so one thread's slow send never delays another's.
+        yield* Effect.forkScoped(
+          Stream.runForEach(orchestrator.streamDomainEvents, (event) =>
+            event.type === "run.updated" && ENDED_RUN_STATUSES.includes(event.payload.status)
+              ? Effect.forkScoped(settleLogged(event.threadId)).pipe(Effect.asVoid)
+              : Effect.void,
+          ),
+        );
+        // Settling twice is harmless, so a run that ends during the sweep is safe either way.
+        const ready = yield* repository
+          .listReadyThreadIds()
+          .pipe(Effect.orElseSucceed((): ReadonlyArray<ThreadId> => []));
+        yield* Effect.forEach(ready, settleLogged, { discard: true });
+      }),
     );
-    // Subscribed first, so a run that completes during the sweep is not missed.
-    const ready = yield* repository
-      .listReadyThreadIds()
-      .pipe(Effect.orElseSucceed((): ReadonlyArray<ThreadId> => []));
-    yield* Effect.forEach(ready, settleLogged, { discard: true });
   });
 
   return PipelineService.of({

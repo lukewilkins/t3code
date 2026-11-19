@@ -80,7 +80,6 @@ describe("V2 preview upgrade", () => {
         [98, "ActiveShellIndexIndexes"],
         [99, "ThreadSpecRevisions"],
         [100, "PipelineRuns"],
-        [101, "PipelineRunReturns"],
       ]);
       assert.deepStrictEqual(yield* runMigrations(), []);
       assert.deepStrictEqual(yield* sql`SELECT * FROM orchestration_v2_legacy_imports`, imports);
@@ -204,7 +203,6 @@ describe("V2 preview upgrade", () => {
         [98, "ActiveShellIndexIndexes"],
         [99, "ThreadSpecRevisions"],
         [100, "PipelineRuns"],
-        [101, "PipelineRunReturns"],
       ]);
     }).pipe(Effect.provide(NodeSqliteClient.layer({ filename: ":memory:" }))),
   );

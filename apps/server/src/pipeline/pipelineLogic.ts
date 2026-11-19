@@ -50,6 +50,7 @@ export function planAdvance(
   run: PipelineRun,
   handoff: string,
   now: string,
+  automatic: boolean,
 ): { readonly run: PipelineRun; readonly send: PipelinePhaseSend } | null {
   const nextIndex = pipelineNextPhaseIndex(run);
   if (nextIndex >= run.phases.length) return null;
@@ -62,7 +63,8 @@ export function planAdvance(
       status: "running",
       handoff: null,
       returnTo: null,
-      returnCount: run.returnTo === null ? run.returnCount : run.returnCount + 1,
+      // Only automatic returns count toward the cap; a user-approved one is a deliberate round.
+      returnCount: run.returnTo !== null && automatic ? run.returnCount + 1 : run.returnCount,
       updatedAt: now,
     },
     send: {
