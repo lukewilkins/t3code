@@ -1,6 +1,7 @@
 import { assert, describe, it } from "@effect/vitest";
 import {
   DEFAULT_SERVER_SETTINGS,
+  MAX_AUTO_PIPELINE_RETURNS,
   type ModelSelection,
   type OrchestrationV2AppThread,
   type Pipeline,
@@ -59,6 +60,7 @@ interface ThreadState {
   /** Runs `hasOutstandingWork` sees; a queued one holds the phase back. */
   runs: ReadonlyArray<{ readonly id: string; readonly ordinal: number; readonly status: string }>;
   assistantText: string | null;
+  failSends: boolean;
 }
 
 const makeHarness = Effect.fn("makePipelineHarness")(function* () {
@@ -68,6 +70,7 @@ const makeHarness = Effect.fn("makePipelineHarness")(function* () {
   const state: ThreadState = {
     runs: [{ id: "run-1", ordinal: 1, status: "completed" }],
     assistantText: null,
+    failSends: false,
   };
   const thread = {
     id: threadId,
@@ -88,7 +91,13 @@ const makeHarness = Effect.fn("makePipelineHarness")(function* () {
     }),
     Layer.mock(ThreadManagementService.ThreadManagementService)({
       sendToThread: (input) =>
-        Ref.update(sent, (all) => [...all, input]).pipe(Effect.as({} as never)),
+        state.failSends
+          ? Effect.fail({ message: "provider offline" } as never)
+          : // Yields like a real dispatch, so concurrent advances interleave without the lock.
+            Effect.yieldNow.pipe(
+              Effect.andThen(Ref.update(sent, (all) => [...all, input])),
+              Effect.as({} as never),
+            ),
     }),
     Layer.mock(ProjectionStore.ProjectionStoreV2)({
       getThread: () => Effect.succeed(thread),
@@ -241,6 +250,76 @@ describe("PipelineService", () => {
       const keys = (yield* Ref.get(sent)).map((input) => input.messageId);
       assert.strictEqual(new Set(keys).size, keys.length);
       assert.include((yield* Ref.get(sent)).at(-1)?.text, "Handoff from Review");
+    }),
+  );
+
+  it.effect("two Continue clicks on the same phase send it once", () =>
+    Effect.gen(function* () {
+      const { pipelines, repository, sent } = yield* makeHarness();
+      yield* pipelines.attach({ threadId, pipelineRef: "Delivery" });
+      const results = yield* Effect.all(
+        [0, 0].map((phaseIndex) => Effect.exit(pipelines.advance({ threadId, phaseIndex }))),
+        { concurrency: "unbounded" },
+      );
+      assert.strictEqual(results.filter(Exit.isSuccess).length, 1);
+      assert.strictEqual((yield* Ref.get(sent)).length, 1);
+      assert.strictEqual((yield* runOf(repository)).phaseIndex, 1);
+    }),
+  );
+
+  it.effect(
+    "a failed automatic send waits for approval, and Continue retries the same message",
+    () =>
+      Effect.gen(function* () {
+        const { pipelines, repository, sent, state } = yield* makeHarness();
+        yield* pipelines.attach({ threadId, pipelineRef: "Delivery" });
+        yield* pipelines.advance({ threadId, phaseIndex: 0 });
+        yield* pipelines.recordHandoff(threadId, "built");
+        const firstKey = (yield* Ref.get(sent))[0]?.messageId;
+
+        state.failSends = true;
+        assert.isTrue(Exit.isFailure(yield* Effect.exit(pipelines.settle(threadId))));
+        const stuck = yield* runOf(repository);
+        assert.strictEqual(stuck.status, "awaiting_approval");
+        assert.strictEqual(stuck.phaseIndex, 1);
+
+        state.failSends = false;
+        yield* pipelines.advance({ threadId, phaseIndex: 1 });
+        const keys = (yield* Ref.get(sent)).map((input) => input.messageId);
+        assert.strictEqual(keys.length, 2);
+        assert.notStrictEqual(keys[1], firstKey);
+        assert.strictEqual((yield* runOf(repository)).phaseIndex, 2);
+      }),
+  );
+
+  it.effect("automatic returns stop at the cap and wait for the user", () =>
+    Effect.gen(function* () {
+      const { pipelines, repository, sent } = yield* makeHarness();
+      const attached = yield* pipelines.attach({ threadId, pipelineRef: "Delivery" });
+      const autoReview = attached.phases.map((phase) =>
+        phase.id === "review" ? { ...phase, autoAdvance: true } : phase,
+      );
+      const returning = (returnCount: number): PipelineRun => ({
+        ...attached,
+        phases: autoReview,
+        phaseIndex: 2,
+        step: 4,
+        status: "ready",
+        handoff: "fix the retry path",
+        returnTo: 1,
+        returnCount,
+      });
+
+      yield* repository.put(returning(MAX_AUTO_PIPELINE_RETURNS - 1));
+      yield* pipelines.settle(threadId);
+      const returned = yield* runOf(repository);
+      assert.strictEqual(returned.phaseIndex, 1);
+      assert.strictEqual(returned.returnCount, MAX_AUTO_PIPELINE_RETURNS);
+
+      yield* repository.put(returning(MAX_AUTO_PIPELINE_RETURNS));
+      yield* pipelines.settle(threadId);
+      assert.strictEqual((yield* runOf(repository)).status, "awaiting_approval");
+      assert.strictEqual((yield* Ref.get(sent)).length, 1);
     }),
   );
 

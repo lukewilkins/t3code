@@ -376,9 +376,17 @@ const make = Effect.gen(function* () {
             yield* putRun({ ...run, status: "awaiting_approval", updatedAt: yield* nowIso });
             return;
           case "advance":
-            yield* advanceLocked(threadId, run.phaseIndex);
+            // A failed automatic send waits for approval, so Continue retries it.
+            yield* advanceLocked(threadId, run.phaseIndex).pipe(
+              Effect.tapError(() =>
+                Effect.flatMap(nowIso, (updatedAt) =>
+                  putRun({ ...run, status: "awaiting_approval", updatedAt }),
+                ),
+              ),
+            );
             return;
-          default:
+          case "wait":
+          case "none":
             return;
         }
       }),
