@@ -406,6 +406,8 @@ const make = Effect.gen(function* () {
   );
 
   const settle = Effect.fn("PipelineService.settle")(function* (threadId: ThreadId) {
+    // Every ended run on every thread lands here; only pipeline threads take a lock.
+    if ((yield* getRun(threadId))?.status !== "ready") return;
     yield* withThreadLock(threadId)(
       Effect.gen(function* () {
         const run = yield* getRun(threadId);
