@@ -263,6 +263,22 @@ it.effect.each(["sqlite"] as const)(
         const sql = yield* SqlClient.SqlClient;
         yield* sql`UPDATE orchestration_v2_projection_messages SET payload_json = json_object('text', ${"x".repeat(512_000)}, 'attachments', json_array(json_object('id', 'attachment:old'))) WHERE message_id = 'obsolete-history'`;
         assert.deepEqual(yield* store.getThreadAttachmentIds(threadId), ["attachment:old"]);
+        const own = "thread-completion-reads-00000000-0000-4000-8000-000000000001-png";
+        const later = "thread-completion-reads-00000000-0000-4000-8000-000000000002-png";
+        const other = "thread-other-00000000-0000-4000-8000-000000000003-png";
+        yield* sql`
+          INSERT INTO thread_spec_revisions (thread_id, revision, body, author, note, created_at)
+          VALUES
+            (${threadId}, 1, ${`![a](/home/user/.t3/attachments/${own}.png)`}, 'agent', '', ''),
+            (${threadId}, 2, ${`![b](</home/user/T3 Home/attachments/${later}.png>) ![c](/x/${other}.png)`}, 'agent', '', ''),
+            ('thread:unrelated', 1, ${`![d](/x/${own.replace("0001", "0004")}.png)`}, 'agent', '', '')
+        `;
+        assert.deepEqual(yield* store.getThreadAttachmentIds(threadId), [
+          "attachment:old",
+          own,
+          later,
+        ]);
+        yield* sql`DELETE FROM thread_spec_revisions`;
       }
       const page = yield* store.getTimelinePage(threadId, { view: "activity", limit: 1 });
       assert.deepEqual(

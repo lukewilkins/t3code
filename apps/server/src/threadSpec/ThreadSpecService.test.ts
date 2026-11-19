@@ -11,11 +11,13 @@ import * as NodeSqliteClient from "@t3tools/shared/nodeSqliteClient";
 import * as Deferred from "effect/Deferred";
 import * as Effect from "effect/Effect";
 import * as Fiber from "effect/Fiber";
+import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Ref from "effect/Ref";
 import * as Stream from "effect/Stream";
 import * as TestClock from "effect/testing/TestClock";
 
+import * as ServerConfig from "../config.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { ThreadSpecConflictError } from "../persistence/Errors.ts";
@@ -62,6 +64,7 @@ const harness = (checkThreadSpecWrite: Guard) =>
       }),
     ),
     Layer.provide(Layer.mock(TextGeneration.TextGeneration)({ checkThreadSpecWrite })),
+    Layer.provideMerge(ServerConfig.layerTest(process.cwd(), { prefix: "t3-thread-spec-test-" })),
     Layer.provideMerge(NodeServices.layer),
     Layer.provideMerge(sqlLayer),
   );
@@ -335,5 +338,106 @@ describe("ThreadSpecRevisionRepository", () => {
         assert.strictEqual((error as ThreadSpecConflictError).currentRevision, 1);
         assert.lengthOf(yield* repo.list(threadId), 1);
       }).pipe(Effect.provide(ThreadSpecRevisions.layer.pipe(Layer.provideMerge(sqlLayer)))),
+  );
+});
+
+describe("ThreadSpecService media", () => {
+  const scratchImage = Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const dir = yield* fileSystem.makeTempDirectoryScoped({ prefix: "t3-spec-scratch-" });
+    const file = `${dir}/shot one.png`;
+    yield* fileSystem.writeFileString(file, "png bytes");
+    return file;
+  });
+  const attachmentFiles = Effect.gen(function* () {
+    const fileSystem = yield* FileSystem.FileSystem;
+    const { attachmentsDir } = yield* ServerConfig.ServerConfig;
+    return (yield* fileSystem.exists(attachmentsDir))
+      ? yield* fileSystem.readDirectory(attachmentsDir)
+      : [];
+  });
+
+  it.effect("copies embedded local media into the thread's attachments and names the copies", () =>
+    Effect.gen(function* () {
+      const fileSystem = yield* FileSystem.FileSystem;
+      const { attachmentsDir } = yield* ServerConfig.ServerConfig;
+      const specs = yield* ThreadSpecService.ThreadSpecService;
+      const source = yield* scratchImage;
+      const first = yield* agentReplace(`![shot](<${source}>)\n<img src="${source}">`, 0);
+      const [stored] = first.stored ?? [];
+      assert.strictEqual(stored?.from, source);
+      assert.isTrue(stored?.path.startsWith(`${attachmentsDir}/thread-1-`));
+      assert.strictEqual(yield* fileSystem.readFileString(stored?.path ?? ""), "png bytes");
+      const body = (yield* specs.snapshot(threadId)).current?.body ?? "";
+      assert.notInclude(body, source);
+      assert.include(body, `<img src="${stored?.path}">`);
+
+      // The same bytes again, from a new revision, reuse the copy.
+      const second = yield* agentReplace(`${body}\n![again](<${source}>)`, 1);
+      assert.strictEqual(second.stored?.[0]?.path, stored?.path);
+      assert.lengthOf(yield* attachmentFiles, 1);
+    }).pipe(Effect.provide(harness(allow)), Effect.scoped),
+  );
+
+  it.effect(
+    "leaves missing, non-media and server-internal files as written, symlinked or not",
+    () =>
+      Effect.gen(function* () {
+        const fileSystem = yield* FileSystem.FileSystem;
+        const { secretsDir, attachmentsDir } = yield* ServerConfig.ServerConfig;
+        const specs = yield* ThreadSpecService.ThreadSpecService;
+        yield* fileSystem.makeDirectory(secretsDir, { recursive: true });
+        const secret = `${secretsDir}/key.png`;
+        yield* fileSystem.writeFileString(secret, "secret");
+        const link = `${yield* fileSystem.makeTempDirectoryScoped()}/innocent.png`;
+        yield* fileSystem.symlink(secret, link);
+        const notes = `${yield* fileSystem.makeTempDirectoryScoped()}/notes.json`;
+        yield* fileSystem.writeFileString(notes, "{}");
+        const disguised = `${yield* fileSystem.makeTempDirectoryScoped()}/disguised.png`;
+        yield* fileSystem.symlink(notes, disguised);
+        const traversal = `${attachmentsDir}/../secrets/key.png`;
+        const missing = "/home/user/missing.png";
+        const spec = [secret, link, disguised, traversal, missing]
+          .map((p) => `![x](${p})`)
+          .join("\n");
+        const result = yield* agentReplace(spec, 0);
+        assert.deepStrictEqual(result.notStored, [
+          { path: secret, reason: "not-allowed" },
+          { path: link, reason: "not-allowed" },
+          { path: disguised, reason: "not-allowed" },
+          { path: traversal, reason: "not-allowed" },
+          { path: missing, reason: "not-found" },
+        ]);
+        assert.isUndefined(result.stored);
+        assert.strictEqual((yield* specs.snapshot(threadId)).current?.body, spec);
+        assert.lengthOf(yield* attachmentFiles, 0);
+      }).pipe(Effect.provide(harness(allow)), Effect.scoped),
+  );
+
+  it.effect("removes a losing write's copy, and its retry stores one again", () =>
+    Effect.gen(function* () {
+      const started = yield* Deferred.make<void>();
+      const gate = yield* Deferred.make<void>();
+      const layer = harness(() =>
+        Deferred.succeed(started, undefined).pipe(
+          Effect.andThen(Deferred.await(gate)),
+          Effect.as({ ok: true, reason: "", quote: "" }),
+        ),
+      );
+      return yield* Effect.gen(function* () {
+        const specs = yield* ThreadSpecService.ThreadSpecService;
+        const source = yield* scratchImage;
+        const write = yield* Effect.forkChild(agentReplace(`![shot](<${source}>)`, 0));
+        yield* Deferred.await(started);
+        yield* specs.replace(threadId, { baseRevision: 0, spec: "theirs", note: "" }, "user");
+        yield* Deferred.succeed(gate, undefined);
+        const error = yield* Fiber.join(write).pipe(Effect.flip);
+        assert.strictEqual(error.reason, "conflict");
+        assert.lengthOf(yield* attachmentFiles, 0);
+        const retry = yield* agentReplace(`theirs\n![shot](<${source}>)`, 1);
+        assert.strictEqual(retry.revision, 2);
+        assert.lengthOf(yield* attachmentFiles, 1);
+      }).pipe(Effect.provide(layer));
+    }).pipe(Effect.scoped),
   );
 });

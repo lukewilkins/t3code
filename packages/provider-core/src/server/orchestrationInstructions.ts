@@ -29,7 +29,8 @@ Each thread has a spec, a markdown doc shown beside the transcript that tells th
 - Before you end a turn that planned or changed work, update the spec: \`t3_spec_edit\` { base_revision, note, edits } for parts, \`t3_spec_update\` { spec, note, base_revision } for the first draft or a rewrite. If it changed since you read it, read it again and redo the change. Skip it for a question you only answered.
 - Sections: Goal (what the user wants now and why, with acceptance criteria; rewrite it in place when they change their mind), Plan, Status (each requirement done or left to do; screenshots of visible changes), Open questions.
 - Current state only. Revisions keep the history; the text never does: no change logs, "Update:", "Round 2", "previously", review narratives, commit hashes or Decisions sections. Put a decision with its reason in the step it shapes, and replace superseded text in place.
-- Images, file links, mermaid and HTML embeds render as in your replies. A write that adds history is refused with the line quoted; rewrite it as the current state.`,
+- A spec is rich text: show what words can't with a screenshot of each visible change, a mermaid diagram for a flow, a chart for numbers, or an HTML embed. These, images and file links render as in your replies. Embed local images and videos by absolute path; the write copies them into the thread's attachments (\`stored\`), so scratch files are fine. \`notStored\` lists paths it couldn't copy.
+- A write that adds history is refused with the line quoted; rewrite it as the current state.`,
 ];
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `

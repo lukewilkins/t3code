@@ -5,6 +5,8 @@ import {
   PositiveInt,
   ThreadId,
   ThreadSpecEdit,
+  ThreadSpecStoredMedia,
+  ThreadSpecUnstoredMedia,
 } from "@t3tools/contracts";
 import * as Schema from "effect/Schema";
 import { Tool, Toolkit } from "effect/ai";
@@ -41,6 +43,8 @@ const Written = Schema.Struct({
   threadId: ThreadId,
   revision: Schema.Number,
   changed: Schema.Boolean,
+  stored: Schema.optionalKey(Schema.Array(ThreadSpecStoredMedia)),
+  notStored: Schema.optionalKey(Schema.Array(ThreadSpecUnstoredMedia)),
 });
 
 const SpecReadTool = Tool.make("t3_spec_read", {
@@ -84,7 +88,10 @@ const SpecUpdateTool = Tool.make("t3_spec_update", {
     ...target,
     base_revision: baseRevision,
     note,
-    spec: Schema.String.annotate({ description: "The full markdown text." }),
+    spec: Schema.String.annotate({
+      description:
+        "The full markdown text. Local images and videos embedded by absolute path are copied into the thread's attachments; the spec then names the copies (`stored`).",
+    }),
   }),
   success: Written,
 })

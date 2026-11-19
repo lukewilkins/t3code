@@ -106,6 +106,36 @@ export function createDeterministicAttachmentId(
   return `${threadSegment}-${uuid}`;
 }
 
+/** Same thread and bytes give the same id, so storing a file twice keeps one copy. */
+export function createContentAttachmentId(
+  threadId: string,
+  bytes: Uint8Array,
+  extension: string,
+): string | null {
+  const digest = NodeCrypto.createHash("sha256").update(bytes).digest("hex");
+  const id = createDeterministicAttachmentId(threadId, `content:${digest}`);
+  return id === null ? null : `${id}${attachmentIdExtensionSuffix(extension)}`;
+}
+
+const ATTACHMENT_FILE_IN_PATH = new RegExp(
+  `[\\\\/](${ATTACHMENT_ID_THREAD_SEGMENT_PATTERN}-${ATTACHMENT_ID_UUID_PATTERN}(?:-${ATTACHMENT_ID_FILE_EXTENSION_PATTERN})?)\\.[a-z0-9]{1,10}`,
+  "gi",
+);
+
+/** Attachment files the texts embed by path; only this thread's ids qualify, as for html renders. */
+export function threadAttachmentIdsInText(threadId: string, texts: Iterable<string>) {
+  const segment = toSafeThreadAttachmentSegment(threadId);
+  if (segment === null) return [];
+  const ids = new Set<string>();
+  for (const text of texts) {
+    for (const match of text.matchAll(ATTACHMENT_FILE_IN_PATH)) {
+      const id = match[1]?.toLowerCase();
+      if (id !== undefined && parseThreadSegmentFromAttachmentId(id) === segment) ids.add(id);
+    }
+  }
+  return [...ids];
+}
+
 /** Retries keep ids; changed bytes must get new ids because clients cache images by id. */
 export function chatAttachmentStableKey(
   messageId: string,

@@ -8,12 +8,14 @@ import { describe, expect, it } from "vite-plus/test";
 import {
   chatAttachmentStableKey,
   createAttachmentId,
+  createContentAttachmentId,
   createDeterministicAttachmentId,
   createPendingAttachmentId,
   parseAttachmentUuid,
   planAttachmentClaim,
   parseThreadSegmentFromAttachmentId,
   sweepStalePendingAttachments,
+  threadAttachmentIdsInText,
   threadHtmlRenderAttachmentIds,
 } from "./attachmentStore.ts";
 
@@ -150,6 +152,32 @@ describe("attachmentStore", () => {
     } finally {
       NodeFS.rmSync(attachmentsDir, { recursive: true, force: true });
     }
+  });
+});
+
+describe("spec media attachment ids", () => {
+  it("names one copy per thread and content, keeping the extension", () => {
+    const bytes = new TextEncoder().encode("png bytes");
+    const id = createContentAttachmentId("thread-1", bytes, "png");
+    expect(id).toBe(createContentAttachmentId("thread-1", bytes, "png"));
+    expect(id).not.toBe(createContentAttachmentId("thread-2", bytes, "png"));
+    expect(id).not.toBe(
+      createContentAttachmentId("thread-1", new TextEncoder().encode("other"), "png"),
+    );
+    expect(id).toMatch(/^thread-1-[0-9a-f-]{36}-png$/);
+  });
+
+  it("finds this thread's attachment files by path and skips other threads' and prefixes", () => {
+    const own = "thread-1-00000000-0000-4000-8000-000000000001-png";
+    const plain = "thread-1-00000000-0000-4000-8000-000000000002";
+    const fork = "thread-10-00000000-0000-4000-8000-000000000003-png";
+    expect(
+      threadAttachmentIdsInText("thread-1", [
+        `![a](/state/attachments/${own}.png) and again /state/attachments/${own}.png`,
+        `<img src="C:\\T3\\attachments\\${plain}.jpg"> ![b](/x/${fork}.png)`,
+        `not a path: ${own}.png`,
+      ]),
+    ).toEqual([own, plain]);
   });
 });
 

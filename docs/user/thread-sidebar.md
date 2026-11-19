@@ -308,6 +308,10 @@ Open it with the **Thread / Spec** switch in the thread header. The spec renders
 reply, and updates while an agent writes. Pick an earlier revision to see what it said then, or
 show what a revision changed.
 
+Agents add screenshots of visible changes, diagrams, and charts where they help. Images and videos
+in a spec are kept with the thread's attachments, so they stay after the agent's scratch files are
+gone and are deleted when you delete the thread. Images from earlier revisions stay until then too.
+
 Each save is a numbered revision, and revisions keep the history. The text never does: an agent
 that adds a change log, "Update:" note, or review narrative is told to rewrite it as the current
 state. That check runs on your [text generation model](./text-generation.md); if the model is

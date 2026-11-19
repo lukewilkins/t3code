@@ -70,3 +70,14 @@ export type ThreadSpecLineEdit = typeof ThreadSpecLineEdit.Type;
 
 export const ThreadSpecEdit = Schema.Union([ThreadSpecStringEdit, ThreadSpecLineEdit]);
 export type ThreadSpecEdit = typeof ThreadSpecEdit.Type;
+
+/** A local media file a spec write copied into the thread's attachments; the spec now names `path`. */
+export const ThreadSpecStoredMedia = Schema.Struct({ from: Schema.String, path: Schema.String });
+export type ThreadSpecStoredMedia = typeof ThreadSpecStoredMedia.Type;
+
+/** A local media path a spec write left as written, and why. */
+export const ThreadSpecUnstoredMedia = Schema.Struct({
+  path: Schema.String,
+  reason: Schema.Literals(["not-found", "too-large", "not-allowed", "copy-failed"]),
+});
+export type ThreadSpecUnstoredMedia = typeof ThreadSpecUnstoredMedia.Type;

@@ -96,7 +96,7 @@ import * as SqlClient from "effect/sql/SqlClient";
 import type * as Statement from "effect/sql/Statement";
 
 import { MCP_APP_OUTPUT_KEY } from "@t3tools/shared/mcpApp";
-import { threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
+import { threadAttachmentIdsInText, threadHtmlRenderAttachmentIds } from "../attachmentStore.ts";
 import { readableSearchText } from "./messageSearchIndex.ts";
 import {
   isFoldableWorkItem,
@@ -6597,6 +6597,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
           WHERE thread.thread_id = ${threadId}
             AND json_extract(message.value, '$.status') = 'pending'
         `;
+        // Media a spec revision embeds is the thread's attachment, old revisions included.
+        const specBodies = yield* sql<{ body: string }>`
+          SELECT body FROM thread_spec_revisions WHERE thread_id = ${threadId}
+        `;
         return [
           ...new Set([
             ...(yield* unshownRunAttachmentIds(
@@ -6605,6 +6609,10 @@ export const layer: Layer.Layer<ProjectionStoreV2, never, SqlClient.SqlClient> =
               Number.MAX_SAFE_INTEGER,
             )),
             ...guestFiles.map((row) => row.id),
+            ...threadAttachmentIdsInText(
+              threadId,
+              specBodies.map((row) => row.body),
+            ),
             ...released.flat(),
           ]),
         ];

@@ -5,6 +5,8 @@ import {
   type ThreadSpecRevision,
   type ThreadSpecRevisionAuthor,
   type ThreadSpecSnapshot,
+  type ThreadSpecStoredMedia,
+  type ThreadSpecUnstoredMedia,
 } from "@t3tools/contracts";
 import { resolveProjectSettings } from "@t3tools/shared/projectSettings";
 import {
@@ -20,16 +22,20 @@ import * as Effect from "effect/Effect";
 import * as FileSystem from "effect/FileSystem";
 import * as Layer from "effect/Layer";
 import * as Option from "effect/Option";
+import * as Path from "effect/Path";
 import * as PubSub from "effect/PubSub";
+import * as Semaphore from "effect/Semaphore";
 import * as Schema from "effect/Schema";
 import * as Stream from "effect/Stream";
 
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
+import * as ServerConfig from "../config.ts";
 import * as ThreadSpecRevisions from "../persistence/ThreadSpecRevisions.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
 import { parseThreadSpecGuardVerdict } from "./threadSpecGuard.ts";
+import { storeSpecLocalMedia } from "./threadSpecMedia.ts";
 
 /** A slow guard must not hold an agent's write; past this the write goes through. */
 export const THREAD_SPEC_GUARD_TIMEOUT = "45 seconds";
@@ -38,6 +44,10 @@ export interface ThreadSpecWriteResult {
   readonly revision: number;
   /** False when the text was already the current revision, so nothing was added. */
   readonly changed: boolean;
+  /** Local media the write copied into the thread's attachments; the spec names the copies. */
+  readonly stored?: ReadonlyArray<ThreadSpecStoredMedia>;
+  /** Local media paths left as written, such as files missing on this machine. */
+  readonly notStored?: ReadonlyArray<ThreadSpecUnstoredMedia>;
 }
 
 export class ThreadSpecService extends Context.Service<
@@ -89,7 +99,12 @@ const make = Effect.gen(function* () {
   const serverSettings = yield* ServerSettings.ServerSettingsService;
   const textGeneration = yield* TextGeneration.TextGeneration;
   const fileSystem = yield* FileSystem.FileSystem;
+  const path = yield* Path.Path;
+  const serverConfig = yield* ServerConfig.ServerConfig;
   const written = yield* PubSub.unbounded<ThreadId>();
+  // Copy-then-append runs one at a time, so a failed write can remove the copies it made
+  // without racing a write that found one and reused it. The slow guard stays outside.
+  const storing = yield* Semaphore.make(1);
 
   const storage = (operation: string) => (cause: unknown) =>
     Effect.logWarning(`Thread spec storage failed: ${operation}`, { cause }).pipe(
@@ -225,39 +240,63 @@ const make = Effect.gen(function* () {
       return yield* specError("conflict", conflictMessage(currentRevision, baseRevision));
     }
     const before = Option.match(current, { onNone: () => "", onSome: (r) => r.body });
-    const after = yield* Effect.try({
+    const next = yield* Effect.try({
       try: () => input.next(before, currentRevision),
       catch: (cause) =>
         isEditError(cause)
           ? specError("invalid-edit", `Not saved: ${cause.message}`)
           : specError("invalid-edit", "Not saved: the edit could not be applied."),
     });
-    if (after === before) return { revision: currentRevision, changed: false };
+    if (next === before) return { revision: currentRevision, changed: false };
     if (input.author === "agent") {
-      yield* guard(threadId, before, after, input.kind, currentRevision);
+      yield* guard(threadId, before, next, input.kind, currentRevision);
     }
-    const createdAt = DateTime.formatIso(yield* DateTime.now);
-    const stored = yield* revisions
-      .append(threadId, {
-        body: after,
-        author: input.author,
-        note: input.note,
-        baseRevision,
-        createdAt,
-      })
-      .pipe(
-        Effect.catchTags({
-          ThreadSpecConflictError: (conflict) =>
-            Effect.fail(
-              specError("conflict", conflictMessage(conflict.currentRevision, baseRevision)),
+    const { media, stored } = yield* storing.withPermits(1)(
+      Effect.gen(function* () {
+        const media = yield* storeSpecLocalMedia(threadId, next).pipe(
+          Effect.provideService(FileSystem.FileSystem, fileSystem),
+          Effect.provideService(Path.Path, path),
+          Effect.provideService(ServerConfig.ServerConfig, serverConfig),
+        );
+        if (media.markdown === before) return { media, stored: null };
+        const createdAt = DateTime.formatIso(yield* DateTime.now);
+        const stored = yield* revisions
+          .append(threadId, {
+            body: media.markdown,
+            author: input.author,
+            note: input.note,
+            baseRevision,
+            createdAt,
+          })
+          .pipe(
+            Effect.catchTags({
+              ThreadSpecConflictError: (conflict) =>
+                Effect.fail(
+                  specError("conflict", conflictMessage(conflict.currentRevision, baseRevision)),
+                ),
+              PersistenceSqlError: (cause) => Effect.flip(storage("append")(cause)),
+              PersistenceDecodeError: (cause) => Effect.flip(storage("append")(cause)),
+            }),
+            // Cleanup finds copies by the spec text naming them; no revision names these.
+            Effect.onError(() =>
+              Effect.forEach(
+                media.created,
+                (file) => fileSystem.remove(file, { force: true }).pipe(Effect.ignore),
+                { discard: true },
+              ),
             ),
-          PersistenceSqlError: (cause) => Effect.flip(storage("append")(cause)),
-          PersistenceDecodeError: (cause) => Effect.flip(storage("append")(cause)),
-        }),
-      );
+          );
+        return { media, stored };
+      }),
+    );
+    const report = {
+      ...(media.stored.length > 0 ? { stored: media.stored } : {}),
+      ...(media.notStored.length > 0 ? { notStored: media.notStored } : {}),
+    };
+    if (stored === null) return { revision: currentRevision, changed: false, ...report };
     const changed = stored.revision !== currentRevision;
     if (changed) yield* PubSub.publish(written, threadId);
-    return { revision: stored.revision, changed };
+    return { revision: stored.revision, changed, ...report };
   });
 
   const edit: ThreadSpecService["Service"]["edit"] = Effect.fn("ThreadSpecService.edit")(
