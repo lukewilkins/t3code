@@ -300,9 +300,9 @@ back the standard rows.
 ## Thread spec
 
 Every thread has a spec: a short markdown document that says what the work is, why, and where it
-stands now. Agents write it, and they update it before they finish a turn that planned or changed
-work. It describes the current state under Goal, Plan, Status, and Open questions, so you can read
-it instead of the transcript to catch up.
+stands now. Agents write it, and they update it before they finish any turn that did work, including
+research and changes outside the code. It describes the current state under Goal, Plan, Status,
+and Open questions, so you can read it instead of the transcript to catch up.
 
 Open it with the **Thread / Spec** switch in the thread header. The spec renders like an agent
 reply, and updates while an agent writes. Pick an earlier revision to see what it said then, or
