@@ -3,6 +3,8 @@ import { thrownErrorMessage } from "@t3tools/client-runtime/errors";
 import { m } from "~/i18n/messages";
 import { isClearComposerCommand, parseSideChatCommand } from "@t3tools/shared/composerTrigger";
 import { armFreshSession, disarmFreshSession, readFreshSessionArm } from "./freshSessionArms";
+import { disarmPipeline, readPipelineArm } from "./pipelineArms";
+import { type PipelineStart, usePipelineSend } from "./usePipelineSend";
 import {
   mergeDirectPreviewAnnotation,
   resolveBackgroundDraftWorkspaceOptions,
@@ -351,6 +353,7 @@ export function useComposerSend(input: ComposerSendInput) {
   const startThreadTurn = useOrchestrationCommand(threadEnvironment.startTurn, {
     reportFailure: false,
   });
+  const pipelineSend = usePipelineSend(environmentId);
   const uploadThreadFeedback = useOrchestrationCommand(threadEnvironment.uploadFeedback, {
     reportFailure: false,
   });
@@ -779,6 +782,7 @@ export function useComposerSend(input: ComposerSendInput) {
     }
     // Read once: an arm made while this send is in flight belongs to the next message.
     const freshArm = freshSessionAvailable ? readFreshSessionArm(routeThreadKey) : undefined;
+    const pipelineArm = readPipelineArm(routeThreadKey);
     if (!hasSendableContent) {
       if (expiredTerminalContextCount > 0) {
         const toastCopy = buildExpiredTerminalContextToastCopy(
@@ -1324,6 +1328,18 @@ export function useComposerSend(input: ComposerSendInput) {
       }
     }
 
+    let pipelineStart: PipelineStart | null = null;
+    if (failure === null && pipelineArm !== undefined) {
+      const attached = await pipelineSend.start({
+        threadId: threadIdForSend,
+        pipelineId: pipelineArm,
+        text: outgoingMessageText,
+        selectedModelSelection: ctxSelectedModelSelection,
+      });
+      if (attached._tag === "Failure") failure = attached.failure;
+      else pipelineStart = attached.start;
+    }
+
     let backgroundDraftOpened = false;
     let turnStartSucceeded = false;
     if (failure === null && turnAttachmentsResult._tag === "Success") {
@@ -1377,13 +1393,13 @@ export function useComposerSend(input: ComposerSendInput) {
             role: "user",
             attachments: turnAttachmentsResult.value,
             ...withMessageContext({
-              text: outgoingMessageText,
+              text: pipelineStart?.text ?? outgoingMessageText,
               context: buildOutgoingMessageContext(
                 boundAttachmentIds(turnAttachmentsResult.value, composerAttachmentsSnapshot),
               ),
             }),
           },
-          modelSelection: ctxSelectedModelSelection,
+          modelSelection: pipelineStart?.modelSelection ?? ctxSelectedModelSelection,
           titleSeed: title,
           runtimeMode,
           interactionMode: DEFAULT_INTERACTION_MODE,
@@ -1419,8 +1435,10 @@ export function useComposerSend(input: ComposerSendInput) {
       const startResult = await startPromise;
       if (startResult._tag === "Failure") {
         failure = startResult;
+        if (pipelineStart !== null) void pipelineSend.abort(threadIdForSend);
       } else {
         turnStartSucceeded = true;
+        if (pipelineStart !== null) disarmPipeline(routeThreadKey, pipelineArm);
         if (checkoutPullRequestUrl) {
           linkCheckoutPullRequest(
             scopeThreadRef(environmentId, threadIdForSend),

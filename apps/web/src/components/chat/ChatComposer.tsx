@@ -1,6 +1,7 @@
 import { copySnapshot } from "./copySnapshot";
 import { VoiceInputSetup } from "./VoiceInputSetup";
 import { useComposerTypingGuard } from "./useComposerTypingGuard";
+import { ComposerPipelinePicker } from "./ComposerPipelinePicker";
 import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferences";
 import type { ComposerAttachmentInsertion } from "../composerAttachmentInsertion";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
@@ -399,6 +400,8 @@ export interface ChatComposerProps {
   sideChatDisabledReason?: string | null;
   /** Arms a fresh session for the next message; absent where `/clear` is unavailable. */
   onFreshSession?: (() => void) | undefined;
+  /** Offers the pipeline picker; off in side chats, whose send path does not start pipelines. */
+  pipelinesAvailable?: boolean | undefined;
   environmentUnavailable: {
     readonly label: string;
     readonly connection: EnvironmentConnectionPresentation;
@@ -3814,6 +3817,11 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
               >
                 {composerAttachButton && !dictationTakesFooter ? (
                   <div className="me-2">{composerAttachButton}</div>
+                ) : null}
+                {props.pipelinesAvailable && !dictationTakesFooter ? (
+                  <div className="me-2">
+                    <ComposerPipelinePicker threadRef={routeThreadRef} />
+                  </div>
                 ) : null}
                 <div
                   data-chat-composer-actions="right"

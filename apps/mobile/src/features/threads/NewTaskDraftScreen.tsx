@@ -1,4 +1,8 @@
 import { T, useGT, useMessages } from "gt-react-native";
+import { scopedThreadKey } from "../../lib/scopedEntities";
+import { getPipelineSelection, setPipelineSelection } from "../pipelines/pipelineSelection";
+import { planPipelineFirstMessage } from "@t3tools/shared/pipeline";
+import { usePipelineAttach, usePipelineCancel } from "../pipelines/usePipelineCommands";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { DraftEnvironmentControl } from "./DraftEnvironmentControl";
 import { NativeScrollEdgeEffectsContext } from "../../native/NativeScrollViewMarker";
@@ -576,6 +580,9 @@ export function NewTaskDraftScreen(props: {
     locked: isComposerInteractionLocked,
   });
 
+  const attachPipeline = usePipelineAttach();
+  const cancelPipeline = usePipelineCancel({ reportFailure: false });
+
   async function handleStart(): Promise<import("@t3tools/contracts").MessageId | null> {
     const selectedProject = flow.selectedProject;
     const draftKey = flow.draftKey;
@@ -674,17 +681,48 @@ export function NewTaskDraftScreen(props: {
       return null;
     }
 
-    const message = flow.buildPendingTaskMessage(creationMetadata, {
+    const builtMessage = flow.buildPendingTaskMessage(creationMetadata, {
       currentCheckoutBranch: queuesInsteadOfStarting ? null : flow.currentCheckoutBranchName,
     });
-    if (!message) {
+    if (!builtMessage) {
       return null;
     }
-    // Persist locally before clearing or leaving the draft; server setup runs on the thread.
+    // The pipeline attaches to the id the thread is about to be created with.
+    const threadKey = scopedThreadKey(builtMessage.environmentId, builtMessage.threadId);
+    const pipelineId = getPipelineSelection(threadKey);
     flow.setSubmitting(true);
+    const pipelineRun =
+      pipelineId === null
+        ? null
+        : await attachPipeline({
+            environmentId: builtMessage.environmentId,
+            threadId: builtMessage.threadId,
+            pipelineId,
+            baseModelSelection: modelSelection,
+          });
+    if (pipelineId !== null && pipelineRun === null) {
+      flow.setSubmitting(false);
+      setPipelineSelection(threadKey, null);
+      return null;
+    }
+    const message =
+      pipelineRun === null
+        ? builtMessage
+        : {
+            ...builtMessage,
+            ...planPipelineFirstMessage({
+              run: pipelineRun,
+              text: builtMessage.text,
+              selectedModel: modelSelection,
+            }),
+          };
+    // Persist locally before clearing or leaving the draft; server setup runs on the thread.
     const queued = await settlePromise(() => enqueueThreadOutboxMessage(message));
     flow.setSubmitting(false);
     if (AsyncResult.isFailure(queued)) {
+      if (pipelineRun !== null) {
+        void cancelPipeline({ environmentId: message.environmentId, threadId: message.threadId });
+      }
       const error = squashAtomCommandFailure(queued);
       Dialog.alert(
         gt("Could not queue task"),
@@ -692,6 +730,7 @@ export function NewTaskDraftScreen(props: {
       );
       return null;
     }
+    if (pipelineRun !== null) setPipelineSelection(threadKey, null);
     promptInputRef.current?.blur();
     navigation.dispatch(
       CommonActions.setParams(

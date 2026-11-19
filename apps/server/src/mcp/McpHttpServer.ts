@@ -55,6 +55,8 @@ import { EnvironmentToolkit } from "./toolkits/environment/tools.ts";
 import * as EnvironmentHandlers from "./toolkits/environment/handlers.ts";
 import { SpecToolkit } from "./toolkits/spec/tools.ts";
 import * as SpecHandlers from "./toolkits/spec/handlers.ts";
+import { PipelineToolkit } from "./toolkits/pipeline/tools.ts";
+import * as PipelineHandlers from "./toolkits/pipeline/handlers.ts";
 import { ThemeToolkit } from "./toolkits/theme/tools.ts";
 import * as ThemeHandlers from "./toolkits/theme/handlers.ts";
 import { ProjectToolkit } from "./toolkits/project/tools.ts";
@@ -1316,6 +1318,8 @@ const layerEnvironmentToolkit = toolkitRegistration(
 
 const layerSpecToolkit = toolkitRegistration(SpecToolkit, SpecHandlers.layer);
 
+const layerPipelineToolkit = toolkitRegistration(PipelineToolkit, PipelineHandlers.layer);
+
 const layerThemeToolkit = toolkitRegistration(ThemeToolkit, ThemeHandlers.layer).pipe(
   Layer.provide(ThreadCommandExecutor.layer),
 );
@@ -1388,6 +1392,7 @@ export const layerTools = Layer.mergeAll(
   layerEnvironmentToolkit,
   layerThemeToolkit,
   layerSpecToolkit,
+  layerPipelineToolkit,
   layerPreviewControlsRegistration,
   layerWorktreeToolkitRegistration,
   layerPullRequestsToolkit,

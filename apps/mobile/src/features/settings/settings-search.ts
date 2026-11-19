@@ -114,6 +114,12 @@ const SETTINGS_SEARCH_TERMS = {
     msg("auto-resume", { $context: "settings search keyword" }),
     msg("thread behavior", { $context: "settings search keyword" }),
   ],
+  SettingsPipelines: [
+    msg("pipelines", { $context: "settings search keyword" }),
+    msg("phases", { $context: "settings search keyword" }),
+    msg("handoff", { $context: "settings search keyword" }),
+    msg("workflow", { $context: "settings search keyword" }),
+  ],
   SettingsFollowUp: [
     msg("follow-ups", { $context: "settings search keyword" }),
     msg("queue", { $context: "settings search keyword" }),

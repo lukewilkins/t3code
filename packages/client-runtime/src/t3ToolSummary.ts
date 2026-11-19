@@ -1156,6 +1156,40 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "pipeline-read": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Listed pipelines {count} time} other {Listed pipelines {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to list pipelines {count} time} other {Tried to list pipelines {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "pipeline-write": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Updated the pipeline {count} time} other {Updated the pipeline {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to update the pipeline {count} time} other {Tried to update the pipeline {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "theme-read": {
       const count = selected.length;
       label = done

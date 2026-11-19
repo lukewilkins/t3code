@@ -917,6 +917,16 @@ export const SETTINGS_SEARCH_ITEMS = [
     searchTerms: [msg("generated thread titles source control content default provider")],
   },
   {
+    id: "pipelines",
+    title: msg("Pipelines"),
+    to: "/settings/threads",
+    searchTerms: [
+      msg("phases handoff workflow stages prompts auto advance approval plan build review"),
+    ],
+    environmentOnly: true,
+    scope: "environment-defaults",
+  },
+  {
     id: "thread-title-instructions",
     title: msg("Thread title instructions"),
     to: "/settings/threads",

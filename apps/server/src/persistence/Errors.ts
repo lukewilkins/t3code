@@ -124,5 +124,6 @@ export class ThreadSpecConflictError extends Schema.TaggedError<ThreadSpecConfli
   { currentRevision: Schema.Number },
 ) {}
 export type ThreadSpecRevisionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+export type PipelineRunRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 
 export type ProjectionRepositoryError = PersistenceSqlError | PersistenceDecodeError;

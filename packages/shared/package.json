@@ -7,6 +7,10 @@
       "types": "./src/threadSpec.ts",
       "import": "./src/threadSpec.ts"
     },
+    "./pipeline": {
+      "types": "./src/pipeline.ts",
+      "import": "./src/pipeline.ts"
+    },
     "./png": {
       "types": "./src/png.ts",
       "import": "./src/png.ts"

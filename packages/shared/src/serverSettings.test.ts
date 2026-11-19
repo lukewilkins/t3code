@@ -192,6 +192,25 @@ describe("serverSettings helpers", () => {
     ).toEqual([]);
   });
 
+  it("replaces pipelines wholesale instead of merging by id or phase", () => {
+    const phase = (id: string, prompt: string) => ({
+      id,
+      name: id,
+      prompt,
+      autoAdvance: false,
+      modelSelection: null,
+    });
+    const a = { id: "a", name: "A", phases: [phase("p1", "one"), phase("p2", "two")] };
+    const b = { id: "b", name: "B", phases: [phase("q1", "q")] };
+    const current = applyServerSettingsPatch(DEFAULT_SERVER_SETTINGS, { pipelines: [a, b] });
+    expect(current.pipelines).toEqual([a, b]);
+    expect(applyServerSettingsPatch(current, { pipelines: [b] }).pipelines).toEqual([b]);
+    expect(applyServerSettingsPatch(current, { pipelines: [b, a] }).pipelines).toEqual([b, a]);
+    const shrunk = { ...a, phases: [phase("p1", "changed")] };
+    expect(applyServerSettingsPatch(current, { pipelines: [shrunk] }).pipelines).toEqual([shrunk]);
+    expect(applyServerSettingsPatch(current, {}).pipelines).toEqual([a, b]);
+  });
+
   it("preserves other projects' actions when overriding, clearing, or resetting one project", () => {
     const firstProject = { id: ProjectId.make("first-project"), scripts: [] };
     const secondProject = { id: ProjectId.make("second-project"), scripts: [] };

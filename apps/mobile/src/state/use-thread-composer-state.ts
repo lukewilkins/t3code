@@ -128,6 +128,12 @@ import { enqueueThreadOutboxMessage } from "./thread-outbox";
 import { dispatchingQueuedMessageIdsAtom, useThreadOutboxMessages } from "./use-thread-outbox";
 import { threadEnvironment } from "./threads";
 import { useAtomCommand } from "./use-atom-command";
+import {
+  getPipelineSelection,
+  setPipelineSelection,
+} from "../features/pipelines/pipelineSelection";
+import { planPipelineFirstMessage } from "@t3tools/shared/pipeline";
+import { usePipelineAttach, usePipelineCancel } from "../features/pipelines/usePipelineCommands";
 
 const EMPTY_QUEUE_WORKFLOW_ATOM = Atom.make<null>(null).pipe(
   Atom.withLabel("mobile-thread-queue-workflow:empty"),
@@ -241,6 +247,8 @@ export function useThreadComposerState(input: {
     label: "edit queued message",
     reportFailure: false,
   });
+  const attachPipeline = usePipelineAttach();
+  const cancelPipeline = usePipelineCancel({ reportFailure: false });
   const [isSavingQueuedEdit, setIsSavingQueuedEdit] = useState(false);
   const savingQueuedEditRef = useRef(false);
   const startingSideChatRef = useRef(false);
@@ -853,6 +861,22 @@ export function useThreadComposerState(input: {
       appAtomRegistry.get(fullHistoryThreadKeysAtom)[threadKey] !== true &&
       resumeCompactionTokens(modelSelection, text, metadata.createdAt) !== null;
     const messageId = MessageId.make(metadata.messageId);
+    // A redirect answers an approval, so it never starts a pipeline.
+    const pipelineId = beforeDispatch === undefined ? getPipelineSelection(threadKey) : null;
+    const pipelineRun =
+      pipelineId === null
+        ? null
+        : await attachPipeline({
+            environmentId: thread.environmentId,
+            threadId: thread.id,
+            pipelineId,
+            baseModelSelection: modelSelection,
+          });
+    if (pipelineId !== null && pipelineRun === null) return null;
+    const outgoing =
+      pipelineRun === null
+        ? { text, modelSelection }
+        : planPipelineFirstMessage({ run: pipelineRun, text, selectedModel: modelSelection });
     onWillEnqueue?.();
     clearThreadComposerError(threadKey);
     const enqueuePromise = enqueueThreadOutboxMessage({
@@ -860,10 +884,10 @@ export function useThreadComposerState(input: {
       threadId: selectedThreadShell.id,
       messageId,
       commandId: CommandId.make(metadata.commandId),
-      text,
+      text: outgoing.text,
       attachments,
       context: draft.context,
-      modelSelection,
+      modelSelection: outgoing.modelSelection,
       runtimeMode: draft.runtimeMode ?? thread.runtimeMode,
       interactionMode: DEFAULT_PROVIDER_INTERACTION_MODE,
       ...(compactBeforeSend
@@ -879,9 +903,13 @@ export function useThreadComposerState(input: {
     enqueuePromise.then(
       () => {
         setKeepFullHistory(threadKey, false);
+        if (pipelineRun !== null) setPipelineSelection(threadKey, null);
         scheduleUnusedComposerAttachmentCleanup(attachments);
       },
       (error: unknown) => {
+        if (pipelineRun !== null) {
+          void cancelPipeline({ environmentId: thread.environmentId, threadId: thread.id });
+        }
         // Restore with uncapped append; capped merge could drop attachments added during the failed write.
         void mergeComposerDraftContent(threadKey, {
           text,

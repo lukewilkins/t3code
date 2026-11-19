@@ -659,6 +659,7 @@ function summaryActionPriority(action: ToolGroupAction | T3McpToolSummaryAction)
     case "environment-update":
     case "theme-set":
     case "spec-write":
+    case "pipeline-write":
     case "attachment-prepare":
     case "attachment-discard":
     case "attachment-send":

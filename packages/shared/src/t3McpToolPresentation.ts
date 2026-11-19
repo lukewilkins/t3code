@@ -58,6 +58,8 @@ export type T3McpToolSummaryAction =
   | "theme-read"
   | "spec-read"
   | "spec-write"
+  | "pipeline-read"
+  | "pipeline-write"
   | "theme-set"
   | "attachment-prepare"
   | "attachment-discard"
@@ -382,6 +384,14 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
   t3_spec_read: tool(["Read", "Reading", "Read", "the thread spec"], "spec-read"),
   t3_spec_edit: tool(["Update", "Updating", "Updated", "the thread spec"], "spec-write"),
   t3_spec_update: tool(["Write", "Writing", "Wrote", "the thread spec"], "spec-write"),
+  t3_pipeline_list: tool(["List", "Listing", "Listed", "pipelines"], "pipeline-read"),
+  t3_pipeline_start: tool(["Start", "Starting", "Started", "a pipeline"], "pipeline-write"),
+  t3_pipeline_handoff: tool(
+    ["Hand off", "Handing off", "Handed off", "the pipeline phase"],
+    "pipeline-write",
+  ),
+  t3_pipeline_advance: tool(["Advance", "Advancing", "Advanced", "the pipeline"], "pipeline-write"),
+  t3_pipeline_cancel: tool(["Cancel", "Cancelling", "Cancelled", "the pipeline"], "pipeline-write"),
   t3_theme_set: tool(["Set", "Setting", "Set", "the theme"], "theme-set"),
   t3_thread_launch: tool(["Launch", "Launching", "Launched", "a project thread"], "thread-create"),
   t3_project_list: tool(["List", "Listing", "Listed", "projects"], "project-list"),

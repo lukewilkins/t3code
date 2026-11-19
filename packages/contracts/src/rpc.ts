@@ -209,6 +209,14 @@ import {
   ThreadSpecSnapshot,
 } from "./threadSpec.ts";
 import {
+  PipelineAdvanceInput,
+  PipelineAttachInput,
+  PipelineError,
+  PipelineRun,
+  PipelineThreadInput,
+  PipelineThreadSnapshot,
+} from "./pipeline.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestChangeBreakdown,
@@ -615,6 +623,10 @@ export const WS_METHODS = {
   pullRequestsGenerateReviewGuide: "pullRequests.generateReviewGuide",
   threadSpecSubscribe: "threadSpec.subscribe",
   threadSpecRevision: "threadSpec.revision",
+  pipelineSubscribe: "pipeline.subscribe",
+  pipelineAttach: "pipeline.attach",
+  pipelineAdvance: "pipeline.advance",
+  pipelineCancel: "pipeline.cancel",
   pullRequestsThreadComments: "pullRequests.threadComments",
   pullRequestsDiffFileContents: "pullRequests.diffFileContents",
   pullRequestsFilesViewed: "pullRequests.filesViewed",
@@ -1212,6 +1224,32 @@ const WsThreadSpecRevisionRpc = Rpc.make(WS_METHODS.threadSpecRevision, {
   payload: ThreadSpecRevisionInput,
   success: ThreadSpecRevision,
   error: ThreadSpecError,
+});
+
+// Streams the thread's pipeline run once on subscribe and again after each change.
+const WsPipelineSubscribeRpc = Rpc.make(WS_METHODS.pipelineSubscribe, {
+  payload: PipelineThreadInput,
+  success: PipelineThreadSnapshot,
+  error: PipelineError,
+  stream: true,
+});
+
+const WsPipelineAttachRpc = Rpc.make(WS_METHODS.pipelineAttach, {
+  payload: PipelineAttachInput,
+  success: PipelineRun,
+  error: PipelineError,
+});
+
+const WsPipelineAdvanceRpc = Rpc.make(WS_METHODS.pipelineAdvance, {
+  payload: PipelineAdvanceInput,
+  success: PipelineRun,
+  error: PipelineError,
+});
+
+const WsPipelineCancelRpc = Rpc.make(WS_METHODS.pipelineCancel, {
+  payload: PipelineThreadInput,
+  success: PipelineThreadSnapshot,
+  error: PipelineError,
 });
 
 const WsPullRequestsThreadCommentsRpc = Rpc.make(WS_METHODS.pullRequestsThreadComments, {
@@ -2381,6 +2419,10 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsGenerateReviewGuideRpc,
   WsThreadSpecSubscribeRpc,
   WsThreadSpecRevisionRpc,
+  WsPipelineSubscribeRpc,
+  WsPipelineAttachRpc,
+  WsPipelineAdvanceRpc,
+  WsPipelineCancelRpc,
   WsPullRequestsThreadCommentsRpc,
   WsPullRequestsDiffFileContentsRpc,
   WsPullRequestsFilesViewedRpc,

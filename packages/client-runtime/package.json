@@ -395,6 +395,18 @@
       "types": "./src/state/threadSpec.ts",
       "default": "./src/state/threadSpec.ts"
     },
+    "./pipeline-banner": {
+      "types": "./src/pipelineBanner.ts",
+      "default": "./src/pipelineBanner.ts"
+    },
+    "./pipeline-draft": {
+      "types": "./src/pipelineDraft.ts",
+      "default": "./src/pipelineDraft.ts"
+    },
+    "./state/pipeline": {
+      "types": "./src/state/pipeline.ts",
+      "default": "./src/state/pipeline.ts"
+    },
     "./state/thread-checkpoints": {
       "types": "./src/state/threadCheckpoints.ts",
       "default": "./src/state/threadCheckpoints.ts"

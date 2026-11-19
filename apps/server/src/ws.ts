@@ -254,6 +254,7 @@ import * as ThreadIssueService from "./orchestration-v2/ThreadIssueService.ts";
 import * as IssueTrackerConnections from "./issue/IssueTrackerConnections.ts";
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import * as ThreadSpecService from "./threadSpec/ThreadSpecService.ts";
+import * as PipelineService from "./pipeline/PipelineService.ts";
 import { listLinkedPullRequestThreads } from "./pullRequest/linkedThreads.ts";
 import { pullRequestSyncKey } from "./pullRequest/pullRequestSyncKey.ts";
 import * as SqlClient from "effect/sql/SqlClient";
@@ -1490,6 +1491,7 @@ export const layerWsRpc = (
       const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
       const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
       const threadSpecs = yield* ThreadSpecService.ThreadSpecService;
+      const pipelines = yield* PipelineService.PipelineService;
       const pullRequestSync = yield* PullRequestSyncReactor.PullRequestSyncReactor;
       const deviceService = yield* DeviceService.DeviceService;
       const deviceHostContext =
@@ -2823,6 +2825,26 @@ export const layerWsRpc = (
           Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
             Effect.andThen(threadSpecs.revision(input.threadId, input.revision)),
           ),
+        [WS_METHODS.pipelineSubscribe]: (input) =>
+          Stream.unwrap(
+            Effect.annotateCurrentSpan({ "orchestration_v2.thread_id": input.threadId }).pipe(
+              Effect.as(pipelines.changes(input.threadId)),
+            ),
+          ),
+        [WS_METHODS.pipelineAttach]: (input) =>
+          pipelines.attach({
+            threadId: input.threadId,
+            pipelineRef: input.pipelineId,
+            ...(input.baseModelSelection === undefined
+              ? {}
+              : { baseModelSelection: input.baseModelSelection }),
+          }),
+        [WS_METHODS.pipelineAdvance]: (input) =>
+          pipelines.advance({
+            threadId: input.threadId,
+            ...(input.phaseIndex === undefined ? {} : { phaseIndex: input.phaseIndex }),
+          }),
+        [WS_METHODS.pipelineCancel]: (input) => pipelines.cancel(input.threadId),
         [WS_METHODS.pullRequestsThreadComments]: (input) =>
           withPullRequestViewer(input, pullRequests.threadComments(input)),
         [WS_METHODS.pullRequestsDiffFileContents]: (input) =>
@@ -3620,6 +3642,7 @@ export const layer = Layer.unwrap(
     const issueTrackers = yield* IssueTrackerConnections.IssueTrackerConnections;
     const reviewGuides = yield* PullRequestReviewGuideService.PullRequestReviewGuideService;
     const threadSpecs = yield* ThreadSpecService.ThreadSpecService;
+    const pipelines = yield* PipelineService.PipelineService;
     const peerLinks = yield* PeerLinks.PeerLinks;
     const peerLinkRequests = yield* PeerLinkRequests.PeerLinkRequests;
     const sql = yield* SqlClient.SqlClient;
@@ -3721,6 +3744,7 @@ export const layer = Layer.unwrap(
                 ),
               ),
               Layer.provide(Layer.succeed(ThreadSpecService.ThreadSpecService, threadSpecs)),
+              Layer.provide(Layer.succeed(PipelineService.PipelineService, pipelines)),
               Layer.provide(Layer.succeed(PeerLinks.PeerLinks, peerLinks)),
               Layer.provide(Layer.succeed(PeerLinkRequests.PeerLinkRequests, peerLinkRequests)),
               Layer.provide(

@@ -26,6 +26,7 @@ import { ThreadLaunchService } from "../orchestration-v2/ThreadLaunchService.ts"
 import { ThreadManagementService } from "../orchestration-v2/ThreadManagementService.ts";
 import { ThreadSearch } from "../orchestration-v2/ThreadSearch.ts";
 import { ThreadSpecService } from "../threadSpec/ThreadSpecService.ts";
+import { PipelineService } from "../pipeline/PipelineService.ts";
 import { PeerForwarding } from "../peer/PeerForwarding.ts";
 import { PeerLinkRequests } from "../peer/PeerLinkRequests.ts";
 import { PeerLinks } from "../peer/PeerLinks.ts";
@@ -89,6 +90,7 @@ const toolHandlerServices = Layer.mergeAll(
   Layer.mock(ThreadManagementService)({}),
   Layer.mock(ThreadSearch)({}),
   Layer.mock(ThreadSpecService)({}),
+  Layer.mock(PipelineService)({}),
   Layer.mock(VcsStatusBroadcaster)({}),
 ).pipe(Layer.provideMerge(Layer.mergeAll(NodeServices.layer, NodeCrypto.layer)));
 

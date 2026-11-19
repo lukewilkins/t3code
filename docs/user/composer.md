@@ -324,6 +324,24 @@ its progress.
   stop the turn only when it is working on the goal. Other goal commands wait for
   the turn to end.
 
+## Pipelines
+
+A pipeline runs a thread through a series of phases, such as plan, implement and review. Each phase starts with its own prompt and a fresh context, so the agent carries forward only what it chose to hand off.
+
+Set pipelines up in Settings → Threads → Pipelines (on mobile, Settings → Agents → Pipelines). Each phase has:
+
+- a prompt;
+- a model, where **Default** uses the thread's model;
+- **Advance automatically**. When it's off, the thread waits after that phase until you choose **Continue**.
+
+To start from a working setup, choose **Add example: Plan, Work, Review**. It adds a planning phase that waits for your approval, a work phase that continues straight to review, and an independent review phase that sends requested changes back to the work phase until it approves. Edit the prompts to fit your project.
+
+A phase with its own model only applies to that phase. The next phase set to Default goes back to the model the thread started with.
+
+To start one, pick a pipeline from the composer and write the task. You can also ask the agent to move an existing thread into a pipeline. It hands its current context to the first phase.
+
+When a phase finishes, the agent writes a handoff for the next phase. A later phase can instead send the work back to an earlier one, such as a review asking for fixes. Going back follows the sending phase's **Advance automatically** setting, and after three automatic returns the thread waits for you, so a review that never approves can't loop forever. A banner above the composer shows the current phase. While a phase waits for you, you can keep chatting to refine the work, then choose **Continue**, or ask the agent to continue. **Cancel** stops the pipeline and leaves the thread as it is.
+
 ## Context in your message
 
 Context you attach lands where your cursor is, as a chip inside your text: a terminal excerpt,

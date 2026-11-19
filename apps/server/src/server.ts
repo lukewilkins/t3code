@@ -64,6 +64,8 @@ import * as PullRequestReviewGuides from "./persistence/PullRequestReviewGuides.
 import * as PullRequestReviewGuideService from "./pullRequest/PullRequestReviewGuideService.ts";
 import * as ThreadSpecRevisions from "./persistence/ThreadSpecRevisions.ts";
 import * as ThreadSpecService from "./threadSpec/ThreadSpecService.ts";
+import * as PipelineRuns from "./persistence/PipelineRuns.ts";
+import * as PipelineService from "./pipeline/PipelineService.ts";
 import * as ServerLifecycleEvents from "./serverLifecycleEvents.ts";
 import * as AnalyticsService from "./telemetry/AnalyticsService.ts";
 import * as DelegatedTaskAnalytics from "./telemetry/DelegatedTaskAnalytics.ts";
@@ -868,12 +870,22 @@ const layerMakeRoutes = Layer.mergeAll(
   Layer.effectDiscard(
     RemoteDelegation.RemoteDelegation.pipe(Effect.flatMap((remote) => remote.start())),
   ),
+  // Moves pipelines on as their phases' runs complete, on the instance clients and agents share.
+  Layer.effectDiscard(
+    PipelineService.PipelineService.pipe(Effect.flatMap((pipelines) => pipelines.startWorker())),
+  ),
 ).pipe(
   Layer.provide(
     PullRequestReviewGuideService.layer.pipe(Layer.provide(PullRequestReviewGuides.layer)),
   ),
   // One instance serves agents (/mcp) and clients (WebSocket), so a write reaches every subscriber.
   Layer.provide(ThreadSpecService.layer.pipe(Layer.provide(ThreadSpecRevisions.layer))),
+  Layer.provide(
+    PipelineService.layer.pipe(
+      Layer.provide(PipelineRuns.layer),
+      Layer.provide(ProjectionStoreV2.layer),
+    ),
+  ),
   // delegate_task to a linked environment, from /mcp and the follower above.
   Layer.provide(RemoteDelegation.layer.pipe(Layer.provide(ProjectionStoreV2.layer))),
   // Links agents ask for: shown in a thread from /mcp, answered over WebSocket.
