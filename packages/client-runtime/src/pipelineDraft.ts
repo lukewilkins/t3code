@@ -51,6 +51,17 @@ export function movePhase(pipeline: Pipeline, phaseId: string, direction: -1 | 1
   return { ...pipeline, phases };
 }
 
+/** Moves a phase into another's position, as a drag and drop does. */
+export function reorderPhase(pipeline: Pipeline, phaseId: string, overId: string): Pipeline {
+  const from = pipeline.phases.findIndex((phase) => phase.id === phaseId);
+  const to = pipeline.phases.findIndex((phase) => phase.id === overId);
+  if (from < 0 || to < 0 || from === to) return pipeline;
+  const phases = [...pipeline.phases];
+  const [moved] = phases.splice(from, 1);
+  phases.splice(to, 0, moved!);
+  return { ...pipeline, phases };
+}
+
 /** Names are required; a blank edit reverts instead of saving. */
 export function normalizeName(value: string): string | null {
   const trimmed = value.trim();

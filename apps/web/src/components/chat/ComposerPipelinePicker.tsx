@@ -14,6 +14,7 @@ import {
   MenuTrigger,
 } from "../ui/menu";
 import { Tooltip, TooltipPopup, TooltipTrigger } from "../ui/tooltip";
+import { useComposerMenuProps } from "./composerEventScope";
 import { armPipeline, disarmPipeline, useArmedPipelineId } from "./pipelineArms";
 import { useThreadPipeline } from "./useThreadPipeline";
 
@@ -23,6 +24,7 @@ export function ComposerPipelinePicker({ threadRef }: { readonly threadRef: Scop
   const threadKey = scopedThreadKey(threadRef);
   const { pipelines, activeRun } = useThreadPipeline(threadRef, true);
   const armedId = useArmedPipelineId(threadKey);
+  const composerMenuProps = useComposerMenuProps();
   if (pipelines.length === 0 || activeRun !== null) return null;
   const armed = armedId !== undefined && pipelines.some((entry) => entry.id === armedId);
   return (
@@ -36,7 +38,6 @@ export function ComposerPipelinePicker({ threadRef }: { readonly threadRef: Scop
                   type="button"
                   variant={armed ? "secondary" : "ghost"}
                   size="icon-sm"
-                  onPointerDown={(event) => event.preventDefault()}
                   aria-label={gt("Run a pipeline")}
                 />
               }
@@ -47,7 +48,7 @@ export function ComposerPipelinePicker({ threadRef }: { readonly threadRef: Scop
         </TooltipTrigger>
         <TooltipPopup side="top">{gt("Run a pipeline")}</TooltipPopup>
       </Tooltip>
-      <MenuPopup align="start" side="top">
+      <MenuPopup align="start" side="top" {...composerMenuProps}>
         <MenuRadioGroup
           value={armed ? armedId : ""}
           onValueChange={(value) => {
@@ -56,7 +57,7 @@ export function ComposerPipelinePicker({ threadRef }: { readonly threadRef: Scop
           }}
         >
           {pipelines.map((pipeline) => (
-            <MenuRadioItem key={pipeline.id} value={pipeline.id}>
+            <MenuRadioItem key={pipeline.id} value={pipeline.id} closeOnClick>
               {pipeline.name}
             </MenuRadioItem>
           ))}

@@ -10,6 +10,7 @@ import {
   newPipeline,
   normalizeName,
   removePhase,
+  reorderPhase,
   trimPipelineNames,
 } from "./pipelineDraft.ts";
 
@@ -42,6 +43,14 @@ describe("pipeline draft edits", () => {
     expect(movePhase(three, "a", -1)).toBe(three);
     expect(movePhase(three, "c", 1)).toBe(three);
     expect(movePhase(three, "missing", 1)).toBe(three);
+  });
+
+  it("drops a dragged phase into the target's position", () => {
+    const three = threePhases();
+    expect(names(reorderPhase(three, "a", "c"))).toEqual(["B", "C", "A"]);
+    expect(names(reorderPhase(three, "c", "a"))).toEqual(["C", "A", "B"]);
+    expect(reorderPhase(three, "b", "b")).toBe(three);
+    expect(reorderPhase(three, "missing", "a")).toBe(three);
   });
 
   it("keeps the last phase", () => {

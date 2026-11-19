@@ -386,6 +386,7 @@ describe("movedSettingsPath", () => {
     expect(movedSettingsPath("/settings/storage", "")).toBe("/settings/maintenance");
     expect(movedSettingsPath("/settings/integrations", "devices")).toBe("/settings/devices");
     expect(movedSettingsPath("/settings/beta", "")).toBe("/settings/labs");
+    expect(movedSettingsPath("/settings/threads", "pipelines")).toBe("/settings/pipelines");
   });
 
   it("leaves current pages alone", () => {
@@ -393,5 +394,7 @@ describe("movedSettingsPath", () => {
     expect(movedSettingsPath("/settings/projects", "project-defaults")).toBeNull();
     expect(movedSettingsPath("/settings/connections", "remote-environments")).toBeNull();
     expect(movedSettingsPath("/settings/appearance", "theme")).toBeNull();
+    expect(movedSettingsPath("/settings/threads", "text-generation-model")).toBeNull();
+    expect(movedSettingsPath("/settings/threads", "")).toBeNull();
   });
 });

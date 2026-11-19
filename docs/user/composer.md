@@ -328,7 +328,7 @@ its progress.
 
 A pipeline runs a thread through a series of phases, such as plan, implement and review. Each phase starts with its own prompt and a fresh context, so the agent carries forward only what it chose to hand off.
 
-Set pipelines up in Settings → Threads → Pipelines (on mobile, Settings → Agents → Pipelines). Each phase has:
+Set pipelines up in Settings → Pipelines (on mobile, Settings → Agents → Pipelines). Pick a pipeline to edit it, and drag a phase by its handle to reorder. Each phase has:
 
 - a prompt;
 - a model, where **Default** uses the thread's model;
