@@ -143,6 +143,8 @@ import { deviceEnvironment } from "../../state/device";
 import { useEnvironmentQuery } from "../../state/query";
 import { threadDevicePreviews } from "../devices/threadDevicePreviews";
 import { ThreadBrowserFloat } from "../browser/ThreadBrowserFloat";
+import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
+import { ThreadViewSwitch, type ThreadView } from "./ThreadViewSwitch";
 import { useThreadServerBrowserTabs } from "../../state/preview";
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -491,6 +493,19 @@ function ThreadDetailBody(
   const nativeMetrics = usesNativeWorkspaceColumns ? columnMetrics : screenMetrics;
   const controlInsets = deriveBottomControlInsets(nativeMetrics);
   const selectedThreadKey = scopedThreadKey(props.environmentId, props.selectedThread.id);
+  // The Spec view needs a server thread; a draft or a creation still queued has none yet.
+  const offersSpec = !props.draftMode && props.selectedThreadDetailRef !== null;
+  const [specChoice, setSpecChoice] = useState<{
+    readonly key: string;
+    readonly view: ThreadView;
+  } | null>(null);
+  const threadView: ThreadView =
+    offersSpec && specChoice?.key === selectedThreadKey ? specChoice.view : "thread";
+  const toggleSpecView = () => {
+    if (!offersSpec) return false;
+    setSpecChoice({ key: selectedThreadKey, view: threadView === "spec" ? "thread" : "spec" });
+  };
+  useHardwareKeyboardCommand("spec", toggleSpecView);
   const childThreadInputs = useChildThreadInputs({
     environmentId: props.environmentId,
     threadId: props.selectedThread.id,
@@ -1369,7 +1384,8 @@ function ThreadDetailBody(
     });
   };
 
-  const showScrollToEndButton = !props.draftMode && contentPresentationKind === "ready" && !isAtEnd;
+  const showScrollToEndButton =
+    !props.draftMode && contentPresentationKind === "ready" && !isAtEnd && threadView !== "spec";
   const { themeAppearance } = useAppearancePreferences();
   const isDarkMode = themeAppearance === "dark";
 
@@ -1494,6 +1510,8 @@ function ThreadDetailBody(
                   onIsAtEndChange={setIsAtEnd}
                   skills={selectedProviderSkills}
                   onUseArtifactTemplate={handleUseArtifactTemplate}
+                  specView={threadView === "spec"}
+                  specSwitch={offersSpec}
                 />
               </ColumnWidth>
             </WorkspaceMutationIdProvider>
@@ -1502,6 +1520,14 @@ function ThreadDetailBody(
       ) : (
         <View className="flex-1" />
       )}
+
+      {showContent && offersSpec ? (
+        <ThreadViewSwitch
+          view={threadView}
+          onChange={(view) => setSpecChoice({ key: selectedThreadKey, view })}
+          top={navigationHeaderHeight}
+        />
+      ) : null}
 
       {showContent ? (
         <ThreadBrowserFloat

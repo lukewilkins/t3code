@@ -1122,6 +1122,40 @@ export function summarizeT3ToolCalls(
           );
       break;
     }
+    case "spec-read": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Read the spec {count} time} other {Read the spec {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to read the spec {count} time} other {Tried to read the spec {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
+    case "spec-write": {
+      const count = selected.length;
+      label = done
+        ? resolve(
+            msg(
+              "{count, plural, one {Updated the spec {count} time} other {Updated the spec {count} times}}",
+              { count },
+            ),
+          )
+        : resolve(
+            msg(
+              "{count, plural, one {Tried to update the spec {count} time} other {Tried to update the spec {count} times}}",
+              { count },
+            ),
+          );
+      break;
+    }
     case "theme-read": {
       const count = selected.length;
       label = done

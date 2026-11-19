@@ -104,6 +104,27 @@ export type ReviewGuideGenerationResult = Omit<
   "headSha" | "generatedAt" | "modelSelection"
 >;
 
+export interface ThreadSpecGuardInput {
+  cwd: string;
+  threadTitle: string;
+  /** The spec's Goal before the write, so the checker knows the thread's subject. */
+  goal: string;
+  kind: "edit" | "replace";
+  /** The section(s) the write changed, as they now read. */
+  sections: string;
+  /** The lines the write added; only these can be refused. */
+  added: string;
+  modelSelection: ModelSelection;
+  projectId?: ProjectId | null | undefined;
+}
+
+/** The checker's raw answer; the caller decides what counts as a refusal. */
+export interface ThreadSpecGuardResult {
+  ok: boolean;
+  reason: string;
+  quote: string;
+}
+
 export interface TranscriptionPostProcessingInput {
   cwd: string;
   prompt: string;
@@ -138,4 +159,8 @@ export interface ProviderTextGeneration {
   readonly generateReviewGuide: (
     input: ReviewGuideGenerationInput,
   ) => Effect.Effect<ReviewGuideGenerationResult, TextGenerationError>;
+
+  readonly checkThreadSpecWrite: (
+    input: ThreadSpecGuardInput,
+  ) => Effect.Effect<ThreadSpecGuardResult, TextGenerationError>;
 }

@@ -118,4 +118,11 @@ export type PullRequestFilesViewedRepositoryError = PersistenceSqlError | Persis
 export type IssueTrackerBindingsRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 export type PullRequestReviewGuideRepositoryError = PersistenceSqlError | PersistenceDecodeError;
 
+/** The write started from a revision other than the thread spec's current one. */
+export class ThreadSpecConflictError extends Schema.TaggedError<ThreadSpecConflictError>()(
+  "ThreadSpecConflictError",
+  { currentRevision: Schema.Number },
+) {}
+export type ThreadSpecRevisionRepositoryError = PersistenceSqlError | PersistenceDecodeError;
+
 export type ProjectionRepositoryError = PersistenceSqlError | PersistenceDecodeError;

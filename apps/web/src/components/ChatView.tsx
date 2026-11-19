@@ -304,6 +304,8 @@ import { ProviderSubagentBar } from "./chat/ProviderSubagentBar";
 import { getTriggerDisplayModelName } from "./chat/providerIconUtils";
 import { resolveScrollToEndClearance } from "./composerFooterLayout";
 import { ChatHeader } from "./chat/ChatHeader";
+import { THREAD_SPEC_BAR_RESERVED_HEIGHT, ThreadSpecView } from "./chat/ThreadSpecView";
+import { useThreadView } from "./chat/useThreadView";
 import { useSideChat } from "./chat/useSideChat";
 import { useRemoteOpenState } from "~/remoteOpen";
 import { shouldShowOpenInPicker } from "./chat/OpenInPicker.logic";
@@ -1034,6 +1036,11 @@ export default function ChatView(props: ChatViewProps) {
   })();
   const activeThreadRef = useActiveThreadRef(activeThread);
   const activeThreadKey = activeThreadRef ? scopedThreadKey(activeThreadRef) : null;
+  const { view: threadView, setView: setThreadView } = useThreadView(
+    embedded || !isServerThread ? null : activeThreadRef,
+  );
+  const setThreadViewStable = useStableCallback(setThreadView);
+  const specViewActive = threadView === "spec";
   const activeEnvironmentServerBrowser = useEnvironmentSupportsServerBrowser(
     activeThreadRef?.environmentId ?? null,
   );
@@ -2763,7 +2770,8 @@ export default function ChatView(props: ChatViewProps) {
   const timelineSkills = activeProviderStatus
     ? resolveProviderSkillsForCwd(activeProviderStatus, gitCwd)
     : EMPTY_PROVIDER_SKILLS;
-  const threadFindEnabled = isServerThread && serverConfig?.threadFind === true;
+  // The Spec view covers the timeline find searches, so find waits for the Thread view.
+  const threadFindEnabled = isServerThread && serverConfig?.threadFind === true && !specViewActive;
   const isThreadFindActive = useThreadFindOpen(activeThreadRef, threadFindEnabled);
   const openThreadFindStable = useStableCallback((threadRef: ScopedThreadRef) => {
     if (threadFindEnabled && scopedThreadKey(threadRef) === activeThreadKey) {
@@ -2789,6 +2797,10 @@ export default function ChatView(props: ChatViewProps) {
       ...terminalShortcuts,
       ...rightPanelShortcuts,
       ...threadLifecycleShortcuts,
+      "thread.spec.toggle": ({ event }) => {
+        if (embedded || !isServerThread) return false;
+        if (!event.repeat) setThreadView(specViewActive ? "thread" : "spec");
+      },
       "thread.copyReference": ({ event }) => {
         if (!event.repeat) copyActiveThreadReference();
       },
@@ -3422,6 +3434,7 @@ export default function ChatView(props: ChatViewProps) {
                 ? { onOpenProjectSettings: handleOpenDraftProjectSettingsStable }
                 : {})}
               {...(threadFindEnabled ? { onFindInThread: openThreadFindStable } : {})}
+              {...(embedded ? {} : { threadView, onThreadViewChange: setThreadViewStable })}
             />
           </header>
         )}
@@ -3437,7 +3450,13 @@ export default function ChatView(props: ChatViewProps) {
             store={chatCanvasStore}
             threadRef={activeThreadRef}
             preview={canvasPreview}
-            detailsCardTopInset={isThreadFindActive ? THREAD_FIND_BAR_RESERVED_HEIGHT : 0}
+            detailsCardTopInset={
+              isThreadFindActive
+                ? THREAD_FIND_BAR_RESERVED_HEIGHT
+                : specViewActive
+                  ? THREAD_SPEC_BAR_RESERVED_HEIGHT
+                  : 0
+            }
             composerOverlayElement={isDraftHeroState ? null : composerOverlayElement}
             data-chat-workspace-drop-target="true"
             onDragEnter={workspaceFileDropHandlers.onDragEnter}
@@ -3466,6 +3485,7 @@ export default function ChatView(props: ChatViewProps) {
             />
             <div
               {...conversationArea}
+              inert={specViewActive}
               className="relative flex min-h-0 flex-1 flex-col bg-background"
             >
               <WorkspaceMutationIdContext value={workspaceMutationId}>
@@ -3583,6 +3603,24 @@ export default function ChatView(props: ChatViewProps) {
                 />
               )}
             </div>
+
+            {specViewActive && activeThreadRef ? (
+              <div className="absolute inset-0 z-10 flex min-h-0 flex-col bg-background">
+                <WorkspaceMutationIdContext value={workspaceMutationId}>
+                  <ThreadSpecView
+                    threadRef={activeThreadRef}
+                    markdownCwd={gitCwd ?? undefined}
+                    skills={timelineSkills}
+                    onUseArtifactTemplate={insertArtifactTemplateStable}
+                    {...(activeProject
+                      ? { onRunShellCommand: parentPanel?.runShellCommand ?? runShellCommandStable }
+                      : {})}
+                    onImageExpand={onExpandTimelineImageStable}
+                    bottomInset={composerReservedHeight}
+                  />
+                </WorkspaceMutationIdContext>
+              </div>
+            ) : null}
 
             <div
               {...workspaceAreaProps(

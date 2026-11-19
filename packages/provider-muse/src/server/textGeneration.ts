@@ -32,6 +32,7 @@ import {
   buildBranchNamePrompt,
   buildCommitMessagePrompt,
   buildPrContentPrompt,
+  buildThreadSpecGuardPrompt,
   buildThreadTitlePrompt,
 } from "@t3tools/provider-core/server/textGenerationPrompts";
 import {
@@ -392,6 +393,15 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
         modelSelection: input.modelSelection,
       });
     });
+  const checkThreadSpecWrite: ProviderTextGeneration["checkThreadSpecWrite"] = Effect.fn(
+    "MuseTextGeneration.checkThreadSpecWrite",
+  )(function* (input) {
+    return yield* runMuseJson({
+      operation: "checkThreadSpecWrite",
+      ...buildThreadSpecGuardPrompt(input),
+      modelSelection: input.modelSelection,
+    });
+  });
   const generateReviewGuide: ProviderTextGeneration["generateReviewGuide"] = () =>
     Effect.fail(investigationUnsupported("generateReviewGuide", "Muse Code"));
   return {
@@ -400,6 +410,7 @@ export const makeMuseTextGeneration = Effect.fn("makeMuseTextGeneration")(functi
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    checkThreadSpecWrite,
     generateTranscriptionPostProcessing,
   } satisfies ProviderTextGeneration;
 });

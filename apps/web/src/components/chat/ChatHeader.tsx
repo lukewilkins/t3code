@@ -44,6 +44,8 @@ import { cn } from "~/lib/utils";
 import { textDirection } from "~/textDirection";
 import { useClientSettings } from "../../hooks/useSettings";
 import { GuestShareIndicator } from "./GuestShareControls";
+import { ThreadViewSwitch } from "./ThreadViewSwitch";
+import type { ThreadView } from "./threadView.logic";
 
 interface ChatHeaderProps {
   activeThreadEnvironmentId: EnvironmentId;
@@ -58,6 +60,9 @@ interface ChatHeaderProps {
   onNewThreadInProject: () => void;
   onOpenProjectSettings?: (() => void) | undefined;
   onFindInThread?: ((threadRef: ScopedThreadRef) => void) | undefined;
+  /** Set where the Thread / Spec switch belongs: server threads outside a side chat. */
+  threadView?: ThreadView | undefined;
+  onThreadViewChange?: ((view: ThreadView) => void) | undefined;
 }
 
 function resolveRenameCommit(input: {
@@ -83,6 +88,8 @@ export const ChatHeader = memo(function ChatHeader({
   onNewThreadInProject,
   onOpenProjectSettings,
   onFindInThread,
+  threadView,
+  onThreadViewChange,
 }: ChatHeaderProps) {
   const gt = useGT();
   const activeProjectName = activeProject?.isScratch ? gt("No project") : activeProject?.title;
@@ -411,6 +418,9 @@ export const ChatHeader = memo(function ChatHeader({
           ) : null}
         </WorkspaceBreadcrumbItem>
       </WorkspaceBreadcrumb>
+      {isServerThread && threadView !== undefined && onThreadViewChange ? (
+        <ThreadViewSwitch value={threadView} onValueChange={onThreadViewChange} />
+      ) : null}
       {isServerThread ? <GuestShareIndicator threadRef={activeThreadRef} /> : null}
     </div>
   );

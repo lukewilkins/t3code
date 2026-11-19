@@ -47,6 +47,7 @@ type TextGenerationOp =
   | "generateBranchName"
   | "generateThreadTitle"
   | "generateReviewGuide"
+  | "checkThreadSpecWrite"
   | "generateTranscriptionPostProcessing";
 
 const resolveInstance = (
@@ -190,6 +191,14 @@ export const make = Effect.gen(function* () {
         input.modelSelection,
         input.projectId,
         (service, modelSelection) => service.generateReviewGuide({ ...input, modelSelection }),
+      );
+    }),
+    checkThreadSpecWrite: Effect.fn("TextGeneration.checkThreadSpecWrite")(function (input) {
+      return generate(
+        "checkThreadSpecWrite",
+        input.modelSelection,
+        input.projectId,
+        (service, modelSelection) => service.checkThreadSpecWrite({ ...input, modelSelection }),
       );
     }),
     generateTranscriptionPostProcessing: Effect.fn(

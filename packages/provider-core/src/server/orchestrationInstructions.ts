@@ -22,6 +22,14 @@ Ordinary coding tasks need no T3 tools.
 
 - Answer data with a trend or comparison with a chart and show any visual the user asks for here: pass an HTML file path or inline HTML to \`html_preview\`, then \`html_render\`. A screenshot on disk or a text description doesn't show it. Never start a server for it. Page tools write only on user request. Never use them to show results. Asked for an image to post, send or use elsewhere: a \`.png\` file and its path, never \`html_render\`.
 - Never use \`preview_*\` unasked to verify or show your own edit. Use them when the current request asks for browser work, including recording edits, or names a page or tab. Don't repeat preview calls from an earlier turn. Public pages: web fetch or search unless browser work was asked; then preview tools only, no web fetch. Close a tab you opened before you reply, unless the user asked for it or uses it.`,
+  `### Thread spec
+
+Each thread has a spec, a markdown doc shown beside the transcript that tells the user what the work is, why, and where it stands now. \`t3_spec_read\` shows it with line numbers and its revision.
+
+- Before you end a turn that planned or changed work, update the spec: \`t3_spec_edit\` { base_revision, note, edits } for parts, \`t3_spec_update\` { spec, note, base_revision } for the first draft or a rewrite. If it changed since you read it, read it again and redo the change. Skip it for a question you only answered.
+- Sections: Goal (what the user wants now and why, with acceptance criteria; rewrite it in place when they change their mind), Plan, Status (each requirement done or left to do; screenshots of visible changes), Open questions.
+- Current state only. Revisions keep the history; the text never does: no change logs, "Update:", "Round 2", "previously", review narratives, commit hashes or Decisions sections. Put a decision with its reason in the step it shapes, and replace superseded text in place.
+- Images, file links, mermaid and HTML embeds render as in your replies. A write that adds history is refused with the line quoted; rewrite it as the current state.`,
 ];
 
 export const T3_CODE_ORCHESTRATION_INSTRUCTIONS = `

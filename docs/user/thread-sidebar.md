@@ -297,6 +297,22 @@ To choose what the thread details card shows, right-click the card or open
 shortcuts, such as Open in editor and project scripts. **Reset to default** brings
 back the standard rows.
 
+## Thread spec
+
+Every thread has a spec: a short markdown document that says what the work is, why, and where it
+stands now. Agents write it, and they update it before they finish a turn that planned or changed
+work. It describes the current state under Goal, Plan, Status, and Open questions, so you can read
+it instead of the transcript to catch up.
+
+Open it with the **Thread / Spec** switch in the thread header. The spec renders like an agent
+reply, and updates while an agent writes. Pick an earlier revision to see what it said then, or
+show what a revision changed.
+
+Each save is a numbered revision, and revisions keep the history. The text never does: an agent
+that adds a change log, "Update:" note, or review narrative is told to rewrite it as the current
+state. That check runs on your [text generation model](./text-generation.md); if the model is
+unavailable, the write goes through.
+
 ## Side chats
 
 A side chat lets you ask a question about a thread without adding to it. It starts

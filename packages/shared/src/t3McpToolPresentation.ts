@@ -56,6 +56,8 @@ export type T3McpToolSummaryAction =
   | "environment-unlink"
   | "environment-update"
   | "theme-read"
+  | "spec-read"
+  | "spec-write"
   | "theme-set"
   | "attachment-prepare"
   | "attachment-discard"
@@ -377,6 +379,9 @@ const T3_MCP_TOOLS: Readonly<Record<string, T3McpToolDefinition>> = {
     "environment-update",
   ),
   t3_theme_read: tool(["Read", "Reading", "Read", "themes"], "theme-read"),
+  t3_spec_read: tool(["Read", "Reading", "Read", "the thread spec"], "spec-read"),
+  t3_spec_edit: tool(["Update", "Updating", "Updated", "the thread spec"], "spec-write"),
+  t3_spec_update: tool(["Write", "Writing", "Wrote", "the thread spec"], "spec-write"),
   t3_theme_set: tool(["Set", "Setting", "Set", "the theme"], "theme-set"),
   t3_thread_launch: tool(["Launch", "Launching", "Launched", "a project thread"], "thread-create"),
   t3_project_list: tool(["List", "Listing", "Listed", "projects"], "project-list"),

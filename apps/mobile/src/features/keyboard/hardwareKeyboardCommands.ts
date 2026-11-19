@@ -13,6 +13,7 @@ export type HardwareKeyboardCommand =
   | "files"
   | "terminal"
   | "review"
+  | "spec"
   | "copyThreadReference"
   | "toggleSidebar"
   | "cycleHost";

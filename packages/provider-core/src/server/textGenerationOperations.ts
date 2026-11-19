@@ -11,6 +11,7 @@ import {
   buildCommitMessagePrompt,
   buildPrContentPrompt,
   buildReviewGuidePrompt,
+  buildThreadSpecGuardPrompt,
   buildThreadTitlePrompt,
 } from "./textGenerationPrompts.ts";
 import {
@@ -194,12 +195,24 @@ export function fromRunner(name: string, run: Runner): ProviderTextGeneration {
     });
   });
 
+  const checkThreadSpecWrite: ProviderTextGeneration["checkThreadSpecWrite"] = Effect.fn(
+    `${name}.checkThreadSpecWrite`,
+  )(function* (input) {
+    return yield* run({
+      operation: "checkThreadSpecWrite",
+      cwd: input.cwd,
+      modelSelection: input.modelSelection,
+      ...buildThreadSpecGuardPrompt(input),
+    });
+  });
+
   return {
     generateCommitMessage,
     generatePrContent,
     generateBranchName,
     generateThreadTitle,
     generateReviewGuide,
+    checkThreadSpecWrite,
     generateTranscriptionPostProcessing,
   } satisfies ProviderTextGeneration;
 }

@@ -3,11 +3,14 @@ import * as Effect from "effect/Effect";
 
 export const TOOL_SEARCH = "tool_search";
 
-/** What a deferring client lists before it searches. Pi's extension declares the same three. */
+/** What a deferring client lists before it searches. Pi's extension declares the same set. */
 const DIRECT_TOOLS: ReadonlySet<string> = new Set([
   "orchestrator_capabilities",
   "delegate_task",
   "task_status",
+  "t3_spec_read",
+  "t3_spec_edit",
+  "t3_spec_update",
   TOOL_SEARCH,
 ]);
 

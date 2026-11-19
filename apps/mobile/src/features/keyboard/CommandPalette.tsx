@@ -101,6 +101,7 @@ const ACTION_ICONS: Record<string, AppSymbolName> = {
   files: "doc.text",
   terminal: "terminal",
   review: PullRequestGlyph.pullRequest,
+  spec: "doc.text",
   copyThreadReference: "link",
 };
 
@@ -400,6 +401,7 @@ export function CommandPalette(props: {
         ["files", gt("Go to file"), ["open", "files", "browse", "search"]],
         ["terminal", gt("Open terminal"), ["shell", "console"]],
         ["review", gt("Review changes"), ["diff", "git", "pull request"]],
+        ["spec", gt("Toggle spec"), ["plan", "revision", "requirements"]],
         ["copyThreadReference", gt("Copy PR link or thread"), ["reference", "clipboard"]],
       ] as const;
       actions.push(

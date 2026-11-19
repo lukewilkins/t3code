@@ -67,6 +67,7 @@ import {
   ChevronRightIcon,
   CornerLeftUpIcon,
   FileSearchIcon,
+  FileTextIcon,
   FolderGit2Icon,
   FolderIcon,
   FolderPlusIcon,
@@ -85,6 +86,7 @@ import {
   UserPlusIcon,
 } from "lucide-react";
 import { openThreadFind } from "./chat/threadFindStore";
+import { useThreadView } from "./chat/useThreadView";
 import { dispatchPreviewAction } from "./preview/previewActionBus";
 import { previewBridge } from "./preview/previewBridge";
 import {
@@ -708,6 +710,9 @@ function OpenCommandPaletteDialog(props: {
   const activeThreadKey = activeThread
     ? scopedThreadKey(scopeThreadRef(activeThread.environmentId, activeThread.id))
     : null;
+  const { view: activeThreadView, setView: setActiveThreadView } = useThreadView(
+    activeThread ? scopeThreadRef(activeThread.environmentId, activeThread.id) : null,
+  );
   const previewPanelThreadRef = activeThread
     ? scopeThreadRef(activeThread.environmentId, activeThread.id)
     : activeDraftThread
@@ -1469,6 +1474,20 @@ function OpenCommandPaletteDialog(props: {
         });
       }
     }
+  }
+
+  if (activeThread !== null) {
+    actionItems.push({
+      kind: "action",
+      value: "action:toggle-thread-spec",
+      searchTerms: ["spec", "specification", "thread", "view", "revision"],
+      title: gt("Toggle spec"),
+      icon: <FileTextIcon className={ITEM_ICON_CLASS} />,
+      shortcutCommand: "thread.spec.toggle",
+      run: async () => {
+        setActiveThreadView(activeThreadView === "spec" ? "thread" : "spec");
+      },
+    });
   }
 
   if (activeThreadReferenceCopyTarget !== null) {

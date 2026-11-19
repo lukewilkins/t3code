@@ -202,6 +202,13 @@ import {
 } from "./guestShare.ts";
 import { PullRequestReviewGuideResult } from "./pullRequestReviewGuide.ts";
 import {
+  ThreadSpecError,
+  ThreadSpecInput,
+  ThreadSpecRevision,
+  ThreadSpecRevisionInput,
+  ThreadSpecSnapshot,
+} from "./threadSpec.ts";
+import {
   PullRequestActionInput,
   PullRequestActivity,
   PullRequestChangeBreakdown,
@@ -606,6 +613,8 @@ export const WS_METHODS = {
   pullRequestsActivity: "pullRequests.activity",
   pullRequestsReviewGuide: "pullRequests.reviewGuide",
   pullRequestsGenerateReviewGuide: "pullRequests.generateReviewGuide",
+  threadSpecSubscribe: "threadSpec.subscribe",
+  threadSpecRevision: "threadSpec.revision",
   pullRequestsThreadComments: "pullRequests.threadComments",
   pullRequestsDiffFileContents: "pullRequests.diffFileContents",
   pullRequestsFilesViewed: "pullRequests.filesViewed",
@@ -1189,6 +1198,20 @@ const WsPullRequestsGenerateReviewGuideRpc = Rpc.make(WS_METHODS.pullRequestsGen
   payload: PullRequestRef,
   success: PullRequestReviewGuideResult,
   error: PullRequestRpcError,
+});
+
+// Streams the whole spec once on subscribe and again after each revision.
+const WsThreadSpecSubscribeRpc = Rpc.make(WS_METHODS.threadSpecSubscribe, {
+  payload: ThreadSpecInput,
+  success: ThreadSpecSnapshot,
+  error: ThreadSpecError,
+  stream: true,
+});
+
+const WsThreadSpecRevisionRpc = Rpc.make(WS_METHODS.threadSpecRevision, {
+  payload: ThreadSpecRevisionInput,
+  success: ThreadSpecRevision,
+  error: ThreadSpecError,
 });
 
 const WsPullRequestsThreadCommentsRpc = Rpc.make(WS_METHODS.pullRequestsThreadComments, {
@@ -2356,6 +2379,8 @@ export const WsRpcGroup = RpcGroup.make(
   WsPullRequestsActivityRpc,
   WsPullRequestsReviewGuideRpc,
   WsPullRequestsGenerateReviewGuideRpc,
+  WsThreadSpecSubscribeRpc,
+  WsThreadSpecRevisionRpc,
   WsPullRequestsThreadCommentsRpc,
   WsPullRequestsDiffFileContentsRpc,
   WsPullRequestsFilesViewedRpc,
