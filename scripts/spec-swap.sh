@@ -3,13 +3,22 @@
 # Run it detached (see CLAUDE.md), never from inside the service it restarts. Usage: spec-swap.sh <built .app>
 set -u
 R=${SPEC_SWAP_REPORT:-$HOME/.t3-spec/userdata/logs/spec-swap.md}
-NEW="$1"
+NEW="${1:?usage: spec-swap.sh <built .app>}"
+mkdir -p "${R:h}"
 APP="/Applications/T3 Code (Spec).app"
 LABEL=com.markhuot.t3code.spec.service
 DOMAIN=gui/$(id -u)
 log() { echo "- $(date +%H:%M:%S) $*" | tee -a "$R"; }
-fail() { log "FAILED: $*"; exit 1; }
-running() { osascript -e 'application id "com.markhuot.t3code.spec" is running' 2>/dev/null | grep -q true; }
+# Never leave the service down: on failure, bring it back from whichever app is in place.
+fail() {
+  log "FAILED: $*"
+  if ! launchctl print $DOMAIN/$LABEL >/dev/null 2>&1 && [ -d "$APP" ]; then
+    launchctl bootstrap $DOMAIN "$HOME/Library/LaunchAgents/$LABEL.plist" 2>>"$R" \
+      && log "Service bootstrapped again after the failure"
+  fi
+  exit 1
+}
+running() { [ -n "$(lsappinfo find bundleid=com.markhuot.t3code.spec)" ]; }
 
 [ -d "$NEW" ] || fail "built app not found at $NEW"
 log "New build: $NEW ($(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$NEW/Contents/Info.plist"))"
@@ -28,9 +37,12 @@ launchctl print $DOMAIN/$LABEL >/dev/null 2>&1 && fail "service still loaded 90s
 lsof -nP -iTCP:3774 -sTCP:LISTEN >/dev/null 2>&1 && fail "port 3774 still held after bootout"
 log "Service unloaded; port 3774 free"
 
-trash "$APP" || fail "could not trash the old app"
-ditto "$NEW" "$APP" || fail "ditto failed"
-xattr -cr "$APP"
+STAGE="/Applications/.T3 Code (Spec).app.new"
+rm -rf "$STAGE"
+ditto "$NEW" "$STAGE" || { rm -rf "$STAGE"; fail "ditto to staging failed"; }
+xattr -cr "$STAGE"
+trash "$APP" || { rm -rf "$STAGE"; fail "could not trash the old app"; }
+mv "$STAGE" "$APP" || fail "could not move the new app into place"
 codesign --verify --deep --strict "$APP" 2>>"$R" && log "codesign verify ok" || log "WARNING: codesign verify failed"
 log "Installed $APP"
 
@@ -42,13 +54,13 @@ done
 [ -n "$ok" ] || fail "launchctl bootstrap kept failing for 60s"
 log "Service bootstrapped (attempt $i)"
 
-ok=""
+env=""
 for i in {1..180}; do
-  curl -fsS http://127.0.0.1:3774/.well-known/t3/environment >/dev/null 2>&1 && { ok=1; break; }
+  env=$(curl -fsS http://127.0.0.1:3774/.well-known/t3/environment 2>/dev/null) && break
   sleep 1
 done
-[ -n "$ok" ] || fail "service did not answer on 3774 within 180s; see ~/.t3-spec/userdata/logs/boot-service.log"
-log "Service up: $(curl -fsS http://127.0.0.1:3774/.well-known/t3/environment | head -c 300)"
+[ -n "$env" ] || fail "service did not answer on 3774 within 180s; see ~/.t3-spec/userdata/logs/boot-service.log"
+log "Service up: ${env[1,300]}"
 log "Listening: $(lsof -nP -iTCP:3774 -sTCP:LISTEN | tail -n +2 | awk '{print $1, $2, $9}')"
 
 open -b com.markhuot.t3code.spec
