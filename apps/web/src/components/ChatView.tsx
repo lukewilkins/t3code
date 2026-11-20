@@ -384,6 +384,7 @@ import { useOrchestrationCommand } from "../state/use-orchestration-command";
 import { useAtomQueryRunner } from "../state/use-atom-query-runner";
 import { observeResize } from "~/lib/observeResize";
 import { ThreadVisitWatermark } from "./chat/ThreadVisitWatermark";
+import { ThreadVisitTrackingContext } from "./chat/threadVisitTracking";
 import { ChatTerminalDrawers } from "./chat/ChatTerminalDrawers";
 import { ChatRightPanel } from "./chat/ChatRightPanel";
 import { useDraftEnvironmentRouting } from "./chat/useDraftEnvironmentRouting";
@@ -3944,6 +3945,7 @@ export default function ChatView(props: ChatViewProps) {
                     </div>
                     <div
                       aria-hidden
+                      data-chat-composer-bottom-spacer
                       className="h-[calc(env(safe-area-inset-bottom)+1rem)] sm:h-[calc(env(safe-area-inset-bottom)+1.25rem)]"
                     />
                   </div>
@@ -4142,7 +4144,7 @@ export default function ChatView(props: ChatViewProps) {
         onConfirm={onConfirmRevertStable}
       />
       {embedded ? null : <LinkPullRequestDialogHost />}
-      <ThreadVisitWatermark threadRef={routeThreadRef} />
+      {use(ThreadVisitTrackingContext) ? <ThreadVisitWatermark threadRef={routeThreadRef} /> : null}
       <ExpandedImageDialogHost threadKey={routeThreadKey} />
     </div>
   );

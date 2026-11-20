@@ -1,6 +1,13 @@
-import type { ComponentProps } from "react";
+import { use, type ComponentProps } from "react";
 
 import { cn } from "~/lib/utils";
+import { ComposerChromeContext } from "./composerChrome";
+
+// A minimal composer sits flush in its host (a lobby card): no radius or shadow, only a top rule.
+const FLUSH_SHELL = "before:rounded-none";
+// `!`: tailwind-merge reads shadow-composer as a color, so it would keep both shadows.
+const FLUSH_OUTLINE = "rounded-none after:border-0 after:border-t";
+const FLUSH_SURFACE = `${FLUSH_OUTLINE} shadow-none! dark:after:inset-shadow-none group-data-context-row/composer-surface:before:rounded-none`;
 
 function Shell({
   contextRow = false,
@@ -23,6 +30,7 @@ function Shell({
         "has-data-[composer-banner-surface=attached]:before:hidden",
         // With a context row below, the card paints its own glass (see Host) so the row stays bare.
         "data-context-row:before:hidden",
+        use(ComposerChromeContext) === "minimal" && FLUSH_SHELL,
         className,
       )}
       {...props}
@@ -42,6 +50,7 @@ function Host({ className, ...props }: ComponentProps<"div">) {
         "group-data-context-row/composer-surface:before:pointer-events-none group-data-context-row/composer-surface:before:absolute group-data-context-row/composer-surface:before:inset-0 group-data-context-row/composer-surface:before:-z-1 group-data-context-row/composer-surface:before:rounded-2xl group-data-context-row/composer-surface:before:bg-(--chat-composer-glass-surface)/(--glass-opacity) group-data-context-row/composer-surface:before:backdrop-blur-(--glass-blur) group-data-context-row/composer-surface:before:backdrop-saturate-(--glass-saturation)",
         outlineClasses,
         "group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-none group-has-data-[composer-banner-surface=attached]/composer-surface:before:hidden group-has-data-[composer-banner-surface=attached]/composer-surface:after:hidden",
+        use(ComposerChromeContext) === "minimal" && FLUSH_SURFACE,
         className,
       )}
       {...props}
@@ -61,6 +70,7 @@ function Main({ className, ...props }: ComponentProps<"div">) {
         "group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-composer dark:group-has-data-[composer-banner-surface=attached]/composer-surface:shadow-none",
         "not-supports-[((backdrop-filter:blur(1px))_or_(-webkit-backdrop-filter:blur(1px)))]:group-has-data-[composer-banner-surface=attached]/composer-surface:bg-(--chat-composer-glass-surface)",
         "group-has-data-[composer-banner-surface=attached]/composer-surface:**:data-[chat-composer-mobile-collapsed=true]:min-h-[calc(1rem+1px)]",
+        use(ComposerChromeContext) === "minimal" && FLUSH_OUTLINE,
         className,
       )}
       {...props}

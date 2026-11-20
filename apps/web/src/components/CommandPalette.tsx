@@ -287,6 +287,7 @@ import { readIssueListPreferences } from "~/components/issue/issueListPreference
 import { IssueGlyph } from "~/components/issue/issuePresentation";
 import { useThreadRouteTarget } from "../hooks/useThreadRouteTarget";
 import { threadRecentUse } from "@t3tools/shared/paletteSearch";
+import { lobbyCommandPaletteItem } from "../lobby/lobbyCommandPaletteItem";
 
 const EMPTY_BROWSE_ENTRIES: FilesystemBrowseResult["entries"] = [];
 const ADD_PROJECT_ENTRY_GROUP = "add-project";
@@ -1751,6 +1752,13 @@ function OpenCommandPaletteDialog(props: {
       );
     },
   });
+
+  actionItems.push(
+    lobbyCommandPaletteItem({
+      title: gt("Open lobby"),
+      open: () => navigate({ to: "/lobby" }),
+    }),
+  );
 
   actionItems.push({
     kind: "action",

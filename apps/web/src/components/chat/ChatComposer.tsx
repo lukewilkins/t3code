@@ -6,6 +6,7 @@ import { insertAttachmentReferencesForDraft } from "./composerAttachmentReferenc
 import type { ComposerAttachmentInsertion } from "../composerAttachmentInsertion";
 import { DESKTOP_PASTE_AS_TEXT_EVENT } from "../../lib/desktopPasteAsText";
 import { BackgroundThreadContext, HiddenThreadContext } from "./backgroundThread";
+import { ComposerChromeContext } from "./composerChrome";
 import {
   resolveCompatibleRuntimeMode,
   runtimeModeConfig,
@@ -1072,6 +1073,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
 
   const backgroundThread = use(BackgroundThreadContext);
   const hiddenThread = use(HiddenThreadContext);
+  const minimalChrome = use(ComposerChromeContext) === "minimal";
   // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes to keydown, window blur and the desktop paste-as-text event to arm plain-text paste
   useEffect(() => {
     // A background composer listens on its own form, so it never hears the main composer's keys.
@@ -2470,7 +2472,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
   const hasBlockingComposerTopDrawer = pendingUserInputs.length > 0;
   const composerControlsCollapsed = isComposerCollapsedMobile;
   // The collapsed mobile web composer keeps a second controls row inside the card.
-  const showInlineRestingControls = isComposerCollapsedMobile;
+  const showInlineRestingControls = isComposerCollapsedMobile && !minimalChrome;
   const composerControlsHidden = showInlineRestingControls && !restingControlsVisible;
   if (composerControlsHidden && isComposerModelPickerOpen) {
     setIsComposerModelPickerOpen(false);
@@ -2505,7 +2507,7 @@ export const ChatComposer = memo(function ChatComposer(props: ChatComposerProps)
     : composerControlsCollapsed
       ? 0
       : expandedControlsIconOnlyBlockCount;
-  const composerControls = (
+  const composerControls = minimalChrome ? null : (
     <ComposerControlsBar
       environmentId={environmentId}
       workspaceCwd={gitCwd}

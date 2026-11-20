@@ -467,6 +467,8 @@ const COMMAND_LABELS: Partial<Record<KeybindingCommand, string>> = {
   "thread.pin": msg("Thread: Pin"),
   "thread.regenerateTitle": msg("Thread: Regenerate Title"),
   "thread.undo": msg("Thread: Undo"),
+  "lobby.focusPrevious": msg("Lobby: Focus Previous Card"),
+  "lobby.focusNext": msg("Lobby: Focus Next Card"),
 };
 
 // Whole labels: search titles keep the encoded message, which cannot nest another one.
