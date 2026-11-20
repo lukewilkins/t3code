@@ -100,8 +100,8 @@ describe("adjacentLobbyCardIndex", () => {
 
 describe("clampLobbyCardWidth", () => {
   it("bounds stored widths and recovers from a corrupt value", () => {
-    expect(clampLobbyCardWidth(10)).toBe(280);
-    expect(clampLobbyCardWidth(5000)).toBe(900);
+    expect(clampLobbyCardWidth(10)).toBe(200);
+    expect(clampLobbyCardWidth(5000)).toBe(1500);
     expect(clampLobbyCardWidth(Number.NaN)).toBe(380);
   });
 });

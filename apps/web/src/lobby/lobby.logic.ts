@@ -4,8 +4,8 @@ import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
 
 import { filterSidebarV2VisibleThreads } from "../components/Sidebar.logic";
 
-export const LOBBY_CARD_WIDTH_MIN = 280;
-export const LOBBY_CARD_WIDTH_MAX = 900;
+export const LOBBY_CARD_WIDTH_MIN = 200;
+export const LOBBY_CARD_WIDTH_MAX = 1500;
 export const LOBBY_CARD_WIDTH_DEFAULT = 380;
 /** A4 portrait: height over width. */
 export const LOBBY_CARD_ASPECT = Math.SQRT2;
