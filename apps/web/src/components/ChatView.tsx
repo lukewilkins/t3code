@@ -3779,7 +3779,7 @@ export default function ChatView(props: ChatViewProps) {
                                 onFreshSession={
                                   freshSessionCommandAvailable ? armFreshSessionStable : undefined
                                 }
-                                pipelinesAvailable={!embedded}
+                                pipelinesAvailable={!embedded && isLocalDraftThread}
                                 onUsageLimitsCommand={
                                   usageLimitsOffered &&
                                   usageLimitsKey !== null &&

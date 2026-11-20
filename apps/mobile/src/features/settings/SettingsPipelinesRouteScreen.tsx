@@ -103,7 +103,7 @@ function PipelinesList(props: { readonly target: SettingsTarget }) {
     >
       <Text className="px-2 text-sm text-foreground-muted">
         {gt(
-          "A pipeline runs ordered phases inside one thread. Each phase hands off to the next in a fresh session. Pick one in the composer before you send.",
+          "A pipeline runs ordered phases inside one thread. Each phase hands off to the next in a fresh session. Pick one when you start a new thread.",
         )}
       </Text>
       {pipelines.length > 0 ? (

@@ -145,7 +145,7 @@ import { threadDevicePreviews } from "../devices/threadDevicePreviews";
 import { ThreadBrowserFloat } from "../browser/ThreadBrowserFloat";
 import { useHardwareKeyboardCommand } from "../keyboard/hardwareKeyboardCommands";
 import { ThreadViewSwitch, type ThreadView } from "./ThreadViewSwitch";
-import { ComposerPipelineChrome } from "../pipelines/ComposerPipelineChrome";
+import { ComposerPipelineBanner } from "../pipelines/ComposerPipelineBanner";
 import { useThreadServerBrowserTabs } from "../../state/preview";
 import type { QueuedThreadMessage } from "../../state/thread-outbox-model";
 import { scopedThreadKey } from "../../lib/scopedEntities";
@@ -1852,9 +1852,9 @@ function ThreadDetailBody(
                         }
                         contentMaxWidth={contentMaxWidth}
                         draftControls={props.draftMode?.controls(draftViewportHeight)}
-                        pipelineChrome={
-                          offersSpec || props.draftMode ? (
-                            <ComposerPipelineChrome
+                        pipelineBanner={
+                          offersSpec ? (
+                            <ComposerPipelineBanner
                               environmentId={props.environmentId}
                               threadId={props.selectedThread.id}
                               disabled={!props.canOperateThread}

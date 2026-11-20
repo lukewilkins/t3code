@@ -400,7 +400,7 @@ export interface ChatComposerProps {
   sideChatDisabledReason?: string | null;
   /** Arms a fresh session for the next message; absent where `/clear` is unavailable. */
   onFreshSession?: (() => void) | undefined;
-  /** Offers the pipeline picker; off in side chats, whose send path does not start pipelines. */
+  /** Offers the pipeline picker; only a new thread starts in a pipeline, and side chats never do. */
   pipelinesAvailable?: boolean | undefined;
   environmentUnavailable: {
     readonly label: string;

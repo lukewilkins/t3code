@@ -22,8 +22,12 @@ export function disarmPipeline(threadKey: string, pipelineId?: string): void {
   appAtomRegistry.set(pipelineArmsAtom, rest);
 }
 
-export function readPipelineArm(threadKey: string): string | undefined {
-  return appAtomRegistry.get(pipelineArmsAtom)[threadKey];
+/** Only a new thread starts in a pipeline, so an arm left on an existing thread never fires. */
+export function readPipelineArm(
+  threadKey: string,
+  input: { readonly isNewThread: boolean },
+): string | undefined {
+  return input.isNewThread ? appAtomRegistry.get(pipelineArmsAtom)[threadKey] : undefined;
 }
 
 export function useArmedPipelineId(threadKey: string): string | undefined {

@@ -138,8 +138,8 @@ export interface ThreadComposerProps {
   readonly placeholder: string;
   readonly contentMaxWidth?: number;
   readonly draftControls?: ReactNode;
-  /** The pipeline banner or picker, above the input. */
-  readonly pipelineChrome?: ReactNode;
+  /** The running pipeline's banner, above the input. */
+  readonly pipelineBanner?: ReactNode;
   readonly bottomInset?: number;
   readonly connectionState: RemoteClientConnectionState;
   readonly environmentLabel: string | null;
@@ -748,7 +748,7 @@ export const ThreadComposer = function ThreadComposer(props: ThreadComposerProps
         style={{ maxWidth: props.contentMaxWidth }}
       >
         {props.draftControls}
-        {props.pipelineChrome}
+        {props.pipelineBanner}
         {!isSubmissionLocked &&
         composerMenu.trigger &&
         (composerMenu.items.length > 0 || composerMenu.trigger.kind === "pull-request") ? (

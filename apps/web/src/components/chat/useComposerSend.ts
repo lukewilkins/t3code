@@ -782,7 +782,7 @@ export function useComposerSend(input: ComposerSendInput) {
     }
     // Read once: an arm made while this send is in flight belongs to the next message.
     const freshArm = freshSessionAvailable ? readFreshSessionArm(routeThreadKey) : undefined;
-    const pipelineArm = readPipelineArm(routeThreadKey);
+    const pipelineArm = readPipelineArm(routeThreadKey, { isNewThread: isLocalDraftThread });
     if (!hasSendableContent) {
       if (expiredTerminalContextCount > 0) {
         const toastCopy = buildExpiredTerminalContextToastCopy(

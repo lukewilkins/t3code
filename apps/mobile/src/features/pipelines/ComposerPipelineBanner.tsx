@@ -5,10 +5,6 @@ import { View } from "react-native";
 
 import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
-import { Chip } from "../../components/ui/Chip";
-import { Menu } from "../../components/ui/Menu";
-import { scopedThreadKey } from "../../lib/scopedEntities";
-import { useEnvironmentServerConfig } from "../../state/entities";
 import { pipelineEnvironment } from "../../state/pipeline";
 import { useEnvironmentQuery } from "../../state/query";
 import { useAtomCommand } from "../../state/use-atom-command";
@@ -16,14 +12,13 @@ import {
   derivePipelineBanner,
   type PipelineBannerState,
 } from "@t3tools/client-runtime/pipeline-banner";
-import { setPipelineSelection, usePipelineSelection } from "./pipelineSelection";
 import { usePipelineCancel } from "./usePipelineCommands";
 
 /**
- * Sits in the composer: the active run's banner, or a picker for the next send's pipeline when the
- * environment has any. Subscribes to the run only while the thread screen is mounted.
+ * Sits above an existing thread's composer while it runs a pipeline, with Continue and Cancel.
+ * Subscribes to the run only while the thread screen is mounted.
  */
-export function ComposerPipelineChrome(props: {
+export function ComposerPipelineBanner(props: {
   readonly environmentId: EnvironmentId;
   readonly threadId: ThreadId;
   readonly disabled: boolean;
@@ -33,60 +28,14 @@ export function ComposerPipelineChrome(props: {
     pipelineEnvironment.live({ environmentId, input: { threadId } }),
   );
   const banner = derivePipelineBanner(live.data?.run ?? null);
-  if (banner !== null) {
-    return (
-      <PipelineBanner
-        environmentId={environmentId}
-        threadId={threadId}
-        banner={banner}
-        disabled={props.disabled}
-      />
-    );
-  }
-  return <PipelinePicker environmentId={environmentId} threadId={threadId} />;
-}
-
-function PipelinePicker(props: {
-  readonly environmentId: EnvironmentId;
-  readonly threadId: ThreadId;
-}) {
-  const gt = useGT();
-  const threadKey = scopedThreadKey(props.environmentId, props.threadId);
-  const pipelines = useEnvironmentServerConfig(props.environmentId)?.settings?.pipelines ?? [];
-  const selectedId = usePipelineSelection(threadKey);
-  if (pipelines.length === 0) return null;
-  const selected = pipelines.find((pipeline) => pipeline.id === selectedId);
+  if (banner === null) return null;
   return (
-    <View className="flex-row pb-1.5">
-      <Menu
-        accessibilityLabel={gt("Pipeline")}
-        actions={[
-          {
-            id: "none",
-            title: gt("No pipeline"),
-            state: selected === undefined ? ("on" as const) : ("off" as const),
-          },
-          ...pipelines.map((pipeline) => ({
-            id: `pipeline:${pipeline.id}`,
-            title: pipeline.name,
-            state: pipeline.id === selected?.id ? ("on" as const) : ("off" as const),
-          })),
-        ]}
-        onPressAction={({ nativeEvent }) =>
-          setPipelineSelection(
-            threadKey,
-            nativeEvent.event === "none" ? null : nativeEvent.event.slice("pipeline:".length),
-          )
-        }
-      >
-        <Chip
-          label={selected ? selected.name : gt("Pipeline")}
-          icon="arrow.triangle.branch"
-          trailingIcon="chevron.down"
-          selected={selected !== undefined}
-        />
-      </Menu>
-    </View>
+    <PipelineBanner
+      environmentId={environmentId}
+      threadId={threadId}
+      banner={banner}
+      disabled={props.disabled}
+    />
   );
 }
 

@@ -3,6 +3,7 @@ import { scopedThreadKey } from "../../lib/scopedEntities";
 import { getPipelineSelection, setPipelineSelection } from "../pipelines/pipelineSelection";
 import { planPipelineFirstMessage } from "@t3tools/shared/pipeline";
 import { usePipelineAttach, usePipelineCancel } from "../pipelines/usePipelineCommands";
+import { DraftPipelineControl } from "../pipelines/DraftPipelineControl";
 import { errorDisplayMessage } from "@t3tools/client-runtime/errors";
 import { DraftEnvironmentControl } from "./DraftEnvironmentControl";
 import { NativeScrollEdgeEffectsContext } from "../../native/NativeScrollViewMarker";
@@ -942,6 +943,14 @@ export function NewTaskDraftScreen(props: {
     </View>
   );
 
+  const pipelineControl = (
+    <DraftPipelineControl
+      environmentId={selectedProject.environmentId}
+      threadId={ThreadId.make(creationMetadata.threadId)}
+      disabled={isComposerInteractionLocked}
+    />
+  );
+
   const workspaceControls = (
     <View className="flex-row items-center gap-1 px-2">
       <ComposerInlineControl
@@ -980,6 +989,7 @@ export function NewTaskDraftScreen(props: {
           onPress={() => openContextPicker("NewTaskBranch")}
         />
       </View>
+      {pipelineControl}
     </View>
   );
 
@@ -1010,7 +1020,11 @@ export function NewTaskDraftScreen(props: {
         </View>
       ) : null}
       {viewportHeight < SHORT_DRAFT_VIEWPORT_HEIGHT ? contextControls : null}
-      {flow.canChooseWorkspace ? workspaceControls : null}
+      {flow.canChooseWorkspace ? (
+        workspaceControls
+      ) : (
+        <View className="flex-row items-center px-2">{pipelineControl}</View>
+      )}
     </View>
   );
 

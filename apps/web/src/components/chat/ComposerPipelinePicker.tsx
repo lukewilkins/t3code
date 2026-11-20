@@ -18,14 +18,14 @@ import { useComposerMenuProps } from "./composerEventScope";
 import { armPipeline, disarmPipeline, useArmedPipelineId } from "./pipelineArms";
 import { useThreadPipeline } from "./useThreadPipeline";
 
-/** Arms a pipeline for the thread's next message; hidden when there is none to pick or one is running. */
+/** Arms a pipeline for a new thread's first message; hidden when there is none to pick. */
 export function ComposerPipelinePicker({ threadRef }: { readonly threadRef: ScopedThreadRef }) {
   const gt = useGT();
   const threadKey = scopedThreadKey(threadRef);
-  const { pipelines, activeRun } = useThreadPipeline(threadRef, true);
+  const { pipelines } = useThreadPipeline(threadRef, false);
   const armedId = useArmedPipelineId(threadKey);
   const composerMenuProps = useComposerMenuProps();
-  if (pipelines.length === 0 || activeRun !== null) return null;
+  if (pipelines.length === 0) return null;
   const armed = armedId !== undefined && pipelines.some((entry) => entry.id === armedId);
   return (
     <Menu>
