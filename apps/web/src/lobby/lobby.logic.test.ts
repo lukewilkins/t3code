@@ -1,8 +1,13 @@
-import { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import { EnvironmentId, ProviderInstanceId, ThreadId } from "@t3tools/contracts";
 import { describe, expect, it } from "vite-plus/test";
 
 import { makeThreadFixture } from "../test-fixtures";
-import { adjacentLobbyCardIndex, clampLobbyCardWidth, selectLobbyThreads } from "./lobby.logic";
+import {
+  adjacentLobbyCardIndex,
+  clampLobbyCardWidth,
+  isRepeatSettlePress,
+  selectLobbyThreads,
+} from "./lobby.logic";
 
 const environmentId = EnvironmentId.make("environment-test");
 const NOW = "2026-03-09T12:00:00.000Z";
@@ -33,6 +38,7 @@ describe("selectLobbyThreads", () => {
       threads,
       delegatedUnderParent: new Set(),
       now: NOW,
+      showWorking: true,
     });
     expect(ids(selected)).toEqual(["open", "snooze-over"]);
   });
@@ -49,8 +55,34 @@ describe("selectLobbyThreads", () => {
       threads,
       delegatedUnderParent: new Set(),
       now: NOW,
+      showWorking: true,
     });
     expect(ids(selected)).toEqual(["pinned-a", "pinned-b", "oldest", "middle", "newest"]);
+  });
+
+  it("leaves out working threads unless showWorking, keeping ones that need the user", () => {
+    const runtime = (status: "running" | "preparing" | "idle" | "completed" | "failed") => ({
+      status,
+      activeRunId: null,
+      providerInstanceId: ProviderInstanceId.make("codex"),
+      providerName: "Codex",
+      lastError: null,
+      updatedAt: NOW,
+    });
+    const threads = [
+      { ...thread("running"), runtime: runtime("running") },
+      { ...thread("preparing"), runtime: runtime("preparing") },
+      { ...thread("background"), runtime: runtime("idle") },
+      { ...thread("child-wait"), runtime: runtime("running"), blockedOnThreadWait: true },
+      { ...thread("approval"), runtime: runtime("running"), hasPendingApprovals: true },
+      { ...thread("completed"), runtime: runtime("completed") },
+      { ...thread("failed"), runtime: runtime("failed") },
+      thread("fresh"),
+    ];
+    const select = (showWorking: boolean) =>
+      ids(selectLobbyThreads({ threads, delegatedUnderParent: new Set(), now: NOW, showWorking }));
+    expect(select(false)).toEqual(["approval", "completed", "failed", "fresh"]);
+    expect(select(true)).toHaveLength(threads.length);
   });
 });
 
@@ -103,5 +135,19 @@ describe("clampLobbyCardWidth", () => {
     expect(clampLobbyCardWidth(10)).toBe(200);
     expect(clampLobbyCardWidth(5000)).toBe(1500);
     expect(clampLobbyCardWidth(Number.NaN)).toBe(380);
+  });
+});
+
+describe("isRepeatSettlePress", () => {
+  const last = { x: 100, y: 50, at: 1_000 };
+  it.each([
+    { name: "no earlier Settle click", last: null, press: last, expected: false },
+    { name: "same pixel within a second", last, press: { ...last, at: 1_999 }, expected: true },
+    { name: "same pixel a second later", last, press: { ...last, at: 2_000 }, expected: false },
+    { name: "subpixel jitter", last, press: { x: 100.5, y: 50.5, at: 1_200 }, expected: true },
+    { name: "moved a pixel across", last, press: { x: 101, y: 50, at: 1_200 }, expected: false },
+    { name: "moved a pixel down", last, press: { x: 100, y: 49, at: 1_200 }, expected: false },
+  ])("$name", ({ last: previous, press, expected }) => {
+    expect(isRepeatSettlePress(previous, press)).toBe(expected);
   });
 });

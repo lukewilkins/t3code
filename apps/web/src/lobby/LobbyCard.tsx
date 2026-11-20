@@ -1,5 +1,5 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
-import type { EnvironmentId, ThreadId } from "@t3tools/contracts";
+import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
 import {
   memo,
@@ -20,6 +20,7 @@ import { ComposerHandleContext } from "../composerHandleContext";
 import { cn } from "../lib/utils";
 import { useProject, useQuietThreadShell } from "../state/entities";
 import { buildThreadRouteParams } from "../threadRoutes";
+import { LobbyCardStatus } from "./LobbyCardStatus";
 import { LOBBY_FOCUS_REQUEST_EVENT, LOBBY_PROMPT_SELECTOR } from "./lobbyFocus";
 
 // The composer spans the card edge to edge and meets its bottom border; the minimal chrome
@@ -30,12 +31,12 @@ const LOBBY_COMPOSER_FLUSH_CLASS =
 const LOBBY_MOUNT_MARGIN = "100%";
 const LOBBY_FOCUS_REQUEST_TIMEOUT_MS = 5_000;
 
-/** Whether the press or click lands on the card itself, not its composer or header link. */
+/** Whether the press or click lands on the card itself, not its composer or header controls. */
 function isCardSurfaceTarget(event: { target: EventTarget; currentTarget: HTMLElement }) {
   const { target, currentTarget } = event;
   // Portaled popovers bubble through React but sit outside the card's DOM.
   if (!(target instanceof Element) || !currentTarget.contains(target)) return false;
-  return target.closest("form, [data-lobby-card-link]") === null;
+  return target.closest("form, [data-lobby-card-link], [data-lobby-card-action]") === null;
 }
 
 /**
@@ -45,8 +46,9 @@ function isCardSurfaceTarget(event: { target: EventTarget; currentTarget: HTMLEl
 export const LobbyCard = memo(function LobbyCard(props: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
+  onSettle: (threadRef: ScopedThreadRef) => void;
 }) {
-  const { environmentId, threadId } = props;
+  const { environmentId, threadId, onSettle } = props;
   const navigate = useNavigate();
   const threadRef = scopeThreadRef(environmentId, threadId);
   const shell = useQuietThreadShell(threadRef);
@@ -163,18 +165,21 @@ export const LobbyCard = memo(function LobbyCard(props: {
         "after:pointer-events-none after:absolute after:inset-0 after:z-50 after:rounded-[inherit] after:border after:border-transparent has-[[data-testid=composer-editor]:focus]:border-ring has-[[data-testid=composer-editor]:focus]:after:border-ring",
       )}
     >
-      <Link
-        data-lobby-card-link
-        to="/$environmentId/$threadId"
-        params={routeParams}
-        className="flex h-10 shrink-0 items-center gap-2 border-b border-border px-3 outline-none focus-visible:bg-accent"
-      >
-        {project ? <ProjectFavicon project={project} className="size-4 shrink-0" /> : null}
-        <span className="shrink-0 truncate text-sm font-medium">{project?.title}</span>
-        <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
-          {shell?.title}
-        </span>
-      </Link>
+      <div className="flex h-10 shrink-0 items-center border-b border-border pr-1.5">
+        <Link
+          data-lobby-card-link
+          to="/$environmentId/$threadId"
+          params={routeParams}
+          className="flex h-full min-w-0 flex-1 items-center gap-2 px-3 outline-none focus-visible:bg-accent"
+        >
+          {project ? <ProjectFavicon project={project} className="size-4 shrink-0" /> : null}
+          <span className="shrink-0 truncate text-sm font-medium">{project?.title}</span>
+          <span className="min-w-0 flex-1 truncate text-xs text-muted-foreground">
+            {shell?.title}
+          </span>
+        </Link>
+        {shell ? <LobbyCardStatus thread={shell} onSettle={onSettle} /> : null}
+      </div>
       <div className="flex min-h-0 flex-1 flex-col">
         {mounted ? (
           <BackgroundThreadContext value>
