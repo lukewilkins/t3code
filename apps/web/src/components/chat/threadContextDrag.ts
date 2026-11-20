@@ -32,6 +32,23 @@ export function useThreadContextDrop(
   ]);
 }
 
+/** For drop targets that take whole threads rather than adding them to one environment's prompt. */
+export function useThreadDropListener(
+  targetRef: RefObject<EventTarget | null>,
+  onDrop: (refs: ReadonlyArray<ThreadContextDropRef>) => void,
+) {
+  const handleDrop = useEffectEvent(onDrop);
+  // oxlint-disable-next-line t3code/no-unreasoned-state-sync -- subscribes the target element to thread drop events
+  useEffect(() => {
+    const target = targetRef.current;
+    if (!target) return;
+    const listener = (event: Event) =>
+      handleDrop((event as CustomEvent<ReadonlyArray<ThreadContextDropRef>>).detail);
+    target.addEventListener(THREAD_CONTEXT_DROP_EVENT, listener);
+    return () => target.removeEventListener(THREAD_CONTEXT_DROP_EVENT, listener);
+  }, [targetRef]);
+}
+
 const DROP_TARGET_ATTRIBUTE = "data-thread-context-drop";
 const DROP_OVER_ATTRIBUTE = "data-thread-context-over";
 
@@ -64,7 +81,7 @@ export function useThreadContextDragGhost(): ThreadContextDragGhost | null {
 
 let overTarget: HTMLElement | null = null;
 
-function findDropTarget(point: { x: number; y: number }): HTMLElement | null {
+export function findThreadContextDropTarget(point: { x: number; y: number }): HTMLElement | null {
   return (
     document
       .elementFromPoint(point.x, point.y)
@@ -76,7 +93,7 @@ export function moveThreadContextDrag(
   point: { x: number; y: number },
   label: { title: string; count: number },
 ) {
-  const target = findDropTarget(point);
+  const target = findThreadContextDropTarget(point);
   if (target !== overTarget) {
     overTarget?.removeAttribute(DROP_OVER_ATTRIBUTE);
     target?.setAttribute(DROP_OVER_ATTRIBUTE, "true");
@@ -95,7 +112,7 @@ export function dropThreadContext(
   point: { x: number; y: number },
   threads: ReadonlyArray<ThreadContextDropRef>,
 ): boolean {
-  const target = findDropTarget(point);
+  const target = findThreadContextDropTarget(point);
   if (!target || threads.length === 0) return false;
   target.dispatchEvent(new CustomEvent(THREAD_CONTEXT_DROP_EVENT, { detail: threads }));
   return true;

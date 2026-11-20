@@ -1,6 +1,8 @@
 import { scopeProjectRef, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentId, ScopedThreadRef, ThreadId } from "@t3tools/contracts";
 import { Link, useNavigate } from "@tanstack/react-router";
+import { useGT } from "gt-react";
+import { XIcon } from "lucide-react";
 import {
   memo,
   useEffect,
@@ -16,6 +18,7 @@ import { ProjectFavicon } from "../components/ProjectFavicon";
 import { BackgroundThreadContext } from "../components/chat/backgroundThread";
 import { ComposerChromeContext } from "../components/chat/composerChrome";
 import { ThreadVisitTrackingContext } from "../components/chat/threadVisitTracking";
+import { Tooltip, TooltipPopup, TooltipTrigger } from "../components/ui/tooltip";
 import { ComposerHandleContext } from "../composerHandleContext";
 import { cn } from "../lib/utils";
 import { useProject, useQuietThreadShell } from "../state/entities";
@@ -47,8 +50,11 @@ export const LobbyCard = memo(function LobbyCard(props: {
   environmentId: EnvironmentId;
   threadId: ThreadId;
   onSettle: (threadRef: ScopedThreadRef) => void;
+  /** Set for a card that is here only because someone added it. */
+  onRemove?: ((threadRef: ScopedThreadRef) => void) | undefined;
 }) {
-  const { environmentId, threadId, onSettle } = props;
+  const { environmentId, threadId, onSettle, onRemove } = props;
+  const gt = useGT();
   const navigate = useNavigate();
   const threadRef = scopeThreadRef(environmentId, threadId);
   const shell = useQuietThreadShell(threadRef);
@@ -179,6 +185,24 @@ export const LobbyCard = memo(function LobbyCard(props: {
           </span>
         </Link>
         {shell ? <LobbyCardStatus thread={shell} onSettle={onSettle} /> : null}
+        {onRemove ? (
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <button
+                  type="button"
+                  data-lobby-card-action
+                  aria-label={gt("Remove from lobby")}
+                  onClick={() => onRemove(threadRef)}
+                  className="inline-flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                />
+              }
+            >
+              <XIcon aria-hidden className="size-3.5" />
+            </TooltipTrigger>
+            <TooltipPopup side="bottom">{gt("Remove from lobby")}</TooltipPopup>
+          </Tooltip>
+        ) : null}
       </div>
       <div className="flex min-h-0 flex-1 flex-col">
         {mounted ? (

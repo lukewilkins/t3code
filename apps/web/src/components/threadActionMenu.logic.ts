@@ -23,6 +23,8 @@ export type ThreadActionMenuId =
   | "rename"
   | "regenerate-title"
   | "mark-unread"
+  | "lobby-add"
+  | "lobby-remove"
   | "share-guest"
   | "copy"
   | "copy-path"
@@ -123,6 +125,8 @@ export interface ThreadActionMenuState {
   readonly canShareWithGuest?: boolean;
   /** A No project thread with its own folder, on a server that can promote it. */
   readonly canTurnIntoProject?: boolean;
+  /** Whether the thread was added to this browser's lobby by hand. */
+  readonly addedToLobby?: boolean;
 }
 
 /** Local navigation, read markers, and copying remain available to read-only clients. */
@@ -132,6 +136,8 @@ export function threadActionRequiresOperate(action: ThreadActionMenuId): boolean
     "new-thread-on-branch",
     "project-settings",
     "mark-unread",
+    "lobby-add",
+    "lobby-remove",
     "share-guest",
     "copy",
     "copy-path",
@@ -220,6 +226,21 @@ export function buildThreadActionMenuItems(
         ]
       : []),
     { id: "mark-unread", label: resolve(msg("Mark unread")), icon: "mail-open" },
+    ...(state.addedToLobby === undefined
+      ? []
+      : [
+          state.addedToLobby
+            ? {
+                id: "lobby-remove" as const,
+                label: resolve(msg("Remove from lobby")),
+                icon: "layout-grid",
+              }
+            : {
+                id: "lobby-add" as const,
+                label: resolve(msg("Show in lobby")),
+                icon: "layout-grid",
+              },
+        ]),
     ...(state.canShareWithGuest
       ? [{ id: "share-guest" as const, label: resolve(msg("Share with guest")), icon: "user-plus" }]
       : []),

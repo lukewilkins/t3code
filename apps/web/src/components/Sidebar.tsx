@@ -7,6 +7,7 @@ import type { EnvironmentServerConfig } from "@t3tools/client-runtime/connection
 import {
   dropThreadContext,
   endThreadContextDrag,
+  findThreadContextDropTarget,
   moveThreadContextDrag as moveThreadContextDragGhost,
 } from "./chat/threadContextDrag";
 import { discardComposerDraft } from "../lib/discardComposerDraft";
@@ -32,11 +33,7 @@ import {
   effectiveSnoozed,
   threadWokeAt,
 } from "@t3tools/client-runtime/state/thread-settled";
-import {
-  asLaunchingThread,
-  createInboxReturnTracker,
-  isThreadWorking,
-} from "@t3tools/client-runtime/state/thread-inbox";
+import { asLaunchingThread, isThreadWorking } from "@t3tools/client-runtime/state/thread-inbox";
 import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 import {
   nextShownOrder,
@@ -109,6 +106,7 @@ import { readLocalApi } from "../localApi";
 import { configuredHostedAppUrl } from "../hostedPairing";
 import { useSidebarPendingFileDropStore } from "../sidebarPendingFileDropStore";
 import { SidebarFolderDrop } from "./sidebar/SidebarFolderDrop";
+import { sidebarInboxReturns as inboxReturns } from "./sidebar/sidebarInboxReturns";
 import {
   pickableProjectGroups,
   selectProjectGroupingSettings,
@@ -258,6 +256,11 @@ import { SidebarContent, SidebarGroup, useSidebar } from "./ui/sidebar";
 import { SidebarChromeFooter, SidebarChromeHeader } from "./sidebar/SidebarChrome";
 import { SidebarHeaderIconButton, SidebarThreadHeader } from "./sidebar/SidebarThreadHeader";
 import { LobbySidebarEntry } from "../lobby/LobbySidebarEntry";
+import {
+  addThreadsToLobby,
+  isThreadAddedToLobby,
+  removeThreadsFromLobby,
+} from "../lobby/lobbyMembership";
 import { TooltipProvider } from "./ui/tooltip";
 import {
   composerDraftHasUserContent,
@@ -340,8 +343,6 @@ const SETTLED_TAIL_PAGE_COUNT = 25;
 const SETTLED_SHELF_EXPANDED_KEY = "t3code:sidebar:settled-expanded";
 const SNOOZED_SHELF_EXPANDED_KEY = "t3code:sidebar:snoozed-expanded";
 const WORKING_SHELF_EXPANDED_KEY = "t3code:sidebar:working-expanded";
-
-const inboxReturns = createInboxReturnTracker();
 
 type SidebarOptimisticDrop = {
   readonly key: string;
@@ -1768,8 +1769,13 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
   };
   const pointerOutsideThreadList = (point: { x: number; y: number }) => {
     // Search results replace the thread list, so only one of them is mounted.
-    const bounds = (threadListRef.current ?? searchResultsListRef.current)?.getBoundingClientRect();
-    return bounds !== undefined && (point.x < bounds.left || point.x > bounds.right);
+    const list = threadListRef.current ?? searchResultsListRef.current;
+    if (list === null) return false;
+    const bounds = list.getBoundingClientRect();
+    if (point.x < bounds.left || point.x > bounds.right) return true;
+    // A drop target in the sidebar itself, such as the Lobby row, also takes the drag out.
+    const target = findThreadContextDropTarget(point);
+    return target !== null && !list.contains(target);
   };
   // The path out of the list often crosses dnd-kit's edge zone, which autoscrolls the sidebar.
   const restoreDragScroll = () => {
@@ -2335,6 +2341,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
       const pinnedSelectedThreads = selectedThreads.filter(
         (thread) => serverConfigs.has(thread.environmentId) && thread.pinnedAt != null,
       );
+      const allAddedToLobby = threadKeys.every(isThreadAddedToLobby);
       const unpinMenuItem = buildBulkUnpinContextMenuItem({
         pinnedCount: pinnedSelectedThreads.length,
       });
@@ -2390,6 +2397,9 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
                 ]
               : []),
             { id: "mark-unread", label: gt("Mark unread ({count})", { count }) },
+            allAddedToLobby
+              ? { id: "lobby-remove", label: gt("Remove from lobby ({count})", { count }) }
+              : { id: "lobby-add", label: gt("Show in lobby ({count})", { count }) },
             {
               id: "delete",
               label: gt("Delete ({count})", { count }),
@@ -2402,6 +2412,11 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
         ),
       );
       if (clicked._tag === "Failure" || clicked.value === null) return;
+      if (clicked.value === "lobby-add" || clicked.value === "lobby-remove") {
+        (clicked.value === "lobby-add" ? addThreadsToLobby : removeThreadsFromLobby)(threadKeys);
+        clearSelection();
+        return;
+      }
       const actionTargets =
         clicked.value === "unpin"
           ? pinnedSelectedThreads
@@ -2686,6 +2701,7 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
               ),
               canTurnIntoProject: canTurnThreadIntoProject(threadRef),
               canRename: !fromSearch,
+              addedToLobby: isThreadAddedToLobby(threadKey),
               supports: {
                 settlement: configLoaded,
                 autoSettleOptOut: supportsAutoSettleOptOut,
@@ -2824,6 +2840,12 @@ export default function Sidebar({ routeReveal }: { routeReveal: SidebarRouteReve
           }
           case "mark-unread":
             markThreadUnread(threadRef);
+            return;
+          case "lobby-add":
+            addThreadsToLobby([threadKey]);
+            return;
+          case "lobby-remove":
+            removeThreadsFromLobby([threadKey]);
             return;
           case "copy-path":
             if (!threadWorkspacePath) {

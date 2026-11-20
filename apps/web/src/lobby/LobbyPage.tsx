@@ -12,12 +12,18 @@ import {
   useEffect,
   useRef,
   useState,
+  useSyncExternalStore,
   type CSSProperties,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 
 import { WorkspaceBreadcrumb, WorkspaceBreadcrumbItem } from "~/components/WorkspaceBreadcrumb";
+import {
+  threadContextDropTargetProps,
+  useThreadDropListener,
+} from "~/components/chat/threadContextDrag";
+import { sidebarInboxReturns } from "~/components/sidebar/sidebarInboxReturns";
 import { WorkspacePageHeader } from "~/components/WorkspacePageHeader";
 import { Checkbox } from "~/components/ui/checkbox";
 import { SidebarInset } from "~/components/ui/sidebar";
@@ -25,6 +31,7 @@ import { stackedThreadToast, toastManager } from "~/components/ui/toast";
 import { isElectron } from "~/env";
 import { useLocalStorage } from "~/hooks/useLocalStorage";
 import { useNowMinute } from "~/hooks/useNowMinute";
+import { useClientSettings } from "~/hooks/useSettings";
 import { useStableCallback } from "~/hooks/useStableCallback";
 import { useThreadActions } from "~/hooks/useThreadActions";
 import { resolveShortcutCommand } from "~/keybindings";
@@ -42,10 +49,12 @@ import {
   LOBBY_CARD_WIDTH_MAX,
   LOBBY_CARD_WIDTH_MIN,
   isRepeatSettlePress,
+  type LobbyActiveOrder,
   lobbyThreadKey,
   type LobbyPress,
   selectLobbyThreads,
 } from "./lobby.logic";
+import { addThreadsToLobby, removeThreadsFromLobby, useLobbyAddedKeys } from "./lobbyMembership";
 
 const CARD_WIDTH_KEY = "t3code:lobby:card-width";
 const WRAP_KEY = "t3code:lobby:wrap";
@@ -97,11 +106,44 @@ export function LobbyPage() {
   // Minute ticks are enough to let a snoozed thread back in when it wakes.
   const now = useNowMinute();
 
-  const lobbyThreads = selectLobbyThreads({
+  const addedKeys = useLobbyAddedKeys();
+  // Ordered as the sidebar orders its rows. Boring mode has no Working shelf.
+  const boringSidebar = useClientSettings((settings) => settings.boringSidebarEnabled);
+  const workingShelf =
+    useClientSettings((settings) => settings.sidebarWorkingShelfEnabled) && !boringSidebar;
+  // Re-sorts when a thread's Working grace ends, as the sidebar does.
+  useSyncExternalStore(sidebarInboxReturns.subscribe, sidebarInboxReturns.getSnapshot);
+  const activeOrder: LobbyActiveOrder = boringSidebar
+    ? { kind: "send" }
+    : workingShelf
+      ? {
+          kind: "inbox",
+          isWorking: sidebarInboxReturns.isWorking,
+          returnedAt: sidebarInboxReturns.returnedAt,
+        }
+      : { kind: "manual" };
+
+  const lobbyEntries = selectLobbyThreads({
     threads,
     delegatedUnderParent,
     now,
     showWorking,
+    addedKeys,
+    activeOrder,
+  });
+
+  const gridRef = useRef<HTMLDivElement>(null);
+  useThreadDropListener(gridRef, (refs) => {
+    const keys = refs.map(scopedThreadKey);
+    addThreadsToLobby(keys);
+    // A settled thread joins at the trailing edge, often out of view.
+    const last = keys.at(-1);
+    window.requestAnimationFrame(() => {
+      const card = gridRef.current?.querySelector(
+        `[data-lobby-card-key="${CSS.escape(last ?? "")}"]`,
+      );
+      card?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    });
   });
 
   const [leavingKeys, setLeavingKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -141,6 +183,8 @@ export function LobbyPage() {
     window.setTimeout(() => {
       void settleThread(threadRef).then((result) => {
         setLeaving(key, false);
+        // Settling from the lobby means done here too, even for a thread added by hand.
+        if (result._tag === "Success") removeThreadsFromLobby([key]);
         if (result._tag !== "Failure" || isAtomCommandInterrupted(result)) return;
         toastManager.add(
           stackedThreadToast({
@@ -151,6 +195,16 @@ export function LobbyPage() {
           }),
         );
       });
+    }, LOBBY_SETTLE_EXIT_MS);
+  });
+
+  const onRemove = useStableCallback((threadRef: ScopedThreadRef) => {
+    const key = scopedThreadKey(threadRef);
+    if (leavingKeys.has(key)) return;
+    setLeaving(key, true);
+    window.setTimeout(() => {
+      removeThreadsFromLobby([key]);
+      setLeaving(key, false);
     }, LOBBY_SETTLE_EXIT_MS);
   });
 
@@ -187,34 +241,45 @@ export function LobbyPage() {
         </WorkspacePageHeader>
 
         <div
+          ref={gridRef}
           data-lobby-grid
+          {...threadContextDropTargetProps()}
           onPointerDownCapture={guardRepeatSettlePress}
           onClickCapture={guardRepeatSettlePress}
           style={{ "--lobby-card-width": `${cardWidth}px` } as CSSProperties}
           className={cn(
             "scrollbar-gutter-both flex min-h-0 flex-1 gap-4 p-4",
+            "data-[thread-context-over]:bg-accent/30 data-[thread-context-over]:ring-1 data-[thread-context-over]:ring-primary/70 data-[thread-context-over]:ring-inset",
             wrap
               ? "flex-wrap content-start overflow-x-hidden overflow-y-auto"
               : "flex-nowrap items-center overflow-x-auto overflow-y-hidden py-0",
           )}
         >
-          {lobbyThreads.length === 0 ? (
-            <p className="m-auto text-sm text-muted-foreground">
-              {showWorking ? (
-                <T>No active threads.</T>
-              ) : (
-                <T context="lobby empty state while working threads are hidden">
-                  No threads waiting on you.
+          {lobbyEntries.length === 0 ? (
+            <div className="m-auto flex flex-col items-center gap-1 text-center text-sm text-muted-foreground">
+              <p>
+                {showWorking ? (
+                  <T>No active threads.</T>
+                ) : (
+                  <T context="lobby empty state while working threads are hidden">
+                    No threads waiting on you.
+                  </T>
+                )}
+              </p>
+              <p className="text-xs">
+                <T context="lobby empty state hint">
+                  Drag a thread here from the sidebar to add it.
                 </T>
-              )}
-            </p>
+              </p>
+            </div>
           ) : (
-            lobbyThreads.map((thread) => {
+            lobbyEntries.map(({ thread, added, open }) => {
               const key = lobbyThreadKey(thread);
               const leaving = leavingKeys.has(key);
               return (
                 <div
                   key={key}
+                  data-lobby-card-key={key}
                   data-lobby-leaving={leaving || undefined}
                   aria-hidden={leaving || undefined}
                   className={cn(
@@ -231,6 +296,7 @@ export function LobbyPage() {
                       environmentId={thread.environmentId}
                       threadId={thread.id}
                       onSettle={onSettle}
+                      onRemove={added && !open ? onRemove : undefined}
                     />
                   </div>
                 </div>

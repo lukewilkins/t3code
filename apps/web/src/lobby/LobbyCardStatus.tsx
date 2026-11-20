@@ -60,7 +60,10 @@ export function LobbyCardStatus(props: {
       {topStatus.label}
     </span>
   );
-  if (!canOperate) return <span className="shrink-0 text-xs">{label}</span>;
+  // A settled thread is here because someone added it; there is nothing left to settle.
+  if (!canOperate || thread.settledOverride === "settled") {
+    return <span className="shrink-0 px-1.5 text-xs">{label}</span>;
+  }
 
   return (
     <Tooltip>

@@ -1,10 +1,18 @@
 import { scopedThreadKey, scopeThreadRef } from "@t3tools/client-runtime/environment";
 import type { EnvironmentThreadShell } from "@t3tools/client-runtime/state/models";
 import { effectiveSnoozed } from "@t3tools/client-runtime/state/thread-settled";
+import { sortSettledThreads } from "@t3tools/client-runtime/state/thread-sort";
 
 import {
   filterSidebarV2VisibleThreads,
+  firstValidTimestampMs,
+  resolveSidebarThreadSection,
   resolveSidebarThreadStatus,
+  type SidebarSection,
+  sortInboxThreadsByReturn,
+  sortPinnedThreadsForSidebar,
+  sortThreadsForSidebar,
+  sortWorkingThreadsBySend,
 } from "../components/Sidebar.logic";
 
 export const LOBBY_CARD_WIDTH_MIN = 200;
@@ -13,41 +21,87 @@ export const LOBBY_CARD_WIDTH_DEFAULT = 380;
 /** A4 portrait: height over width. */
 export const LOBBY_CARD_ASPECT = Math.SQRT2;
 
+/** How the sidebar orders its active threads, so the lobby can match it. */
+export type LobbyActiveOrder =
+  | { readonly kind: "manual" }
+  /** Boring mode lists active threads by the user's latest message. */
+  | { readonly kind: "send" }
+  /** The Working shelf: threads still working sit below the inbox, which sorts by return. */
+  | {
+      readonly kind: "inbox";
+      readonly isWorking: (thread: EnvironmentThreadShell) => boolean;
+      readonly returnedAt: (thread: EnvironmentThreadShell) => number | undefined;
+    };
+
+export interface LobbyEntry<T> {
+  readonly thread: T;
+  /** Pulled in by hand, from the sidebar or a thread menu. */
+  readonly added: boolean;
+  /** Would be listed without being added: open, and not hidden as working. */
+  readonly open: boolean;
+}
+
 /**
- * Listed top-level threads that are not archived, deleted, settled, snoozed or (unless
- * `showWorking`) working. Pinned threads lead in pin order; the rest follow oldest first so a new
- * thread joins at the end and no card moves while someone types in one.
+ * Listed top-level threads that are open (not settled, snoozed or, unless `showWorking`,
+ * working), plus any thread added by hand. They follow the sidebar's order, so the newest sits at
+ * the leading edge and settled threads at the trailing one.
  */
 export function selectLobbyThreads<T extends EnvironmentThreadShell>(input: {
   readonly threads: readonly T[];
   readonly delegatedUnderParent: ReadonlySet<string>;
   readonly now: string;
   readonly showWorking: boolean;
-}): T[] {
-  const open = filterSidebarV2VisibleThreads(
+  readonly addedKeys: ReadonlySet<string>;
+  readonly activeOrder: LobbyActiveOrder;
+}): LobbyEntry<T>[] {
+  const { activeOrder } = input;
+  const sections: Record<SidebarSection, T[]> = {
+    pinned: [],
+    active: [],
+    working: [],
+    snoozed: [],
+    settled: [],
+  };
+  const entries = new Map<T, LobbyEntry<T>>();
+  for (const thread of filterSidebarV2VisibleThreads(
     input.threads,
     null,
     input.delegatedUnderParent,
-  ).filter(
-    (thread) =>
-      thread.deletedAt == null &&
-      thread.settledOverride !== "settled" &&
-      !effectiveSnoozed(thread, { now: input.now }) &&
-      (input.showWorking || !isLobbyThreadWorking(thread)),
-  );
-  return open.toSorted((left, right) => {
-    const leftPinned = left.pinnedAt != null;
-    const rightPinned = right.pinnedAt != null;
-    if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
-    if (leftPinned) {
-      const order = comparePlain(left.pinOrderKey ?? "", right.pinOrderKey ?? "");
-      if (order !== 0) return order;
-    }
-    return (
-      comparePlain(left.createdAt, right.createdAt) ||
-      comparePlain(lobbyThreadKey(left), lobbyThreadKey(right))
-    );
-  });
+  )) {
+    if (thread.deletedAt != null) continue;
+    const snoozed = effectiveSnoozed(thread, { now: input.now });
+    const settled = thread.settledOverride === "settled";
+    const open = !snoozed && !settled && (input.showWorking || !isLobbyThreadWorking(thread));
+    const added = input.addedKeys.has(lobbyThreadKey(thread));
+    if (!open && !added) continue;
+    const section = resolveSidebarThreadSection({
+      snoozed,
+      settled,
+      pinned: thread.pinnedAt != null,
+    });
+    sections[
+      section === "active" && activeOrder.kind === "inbox" && activeOrder.isWorking(thread)
+        ? "working"
+        : section
+    ].push(thread);
+    entries.set(thread, { thread, added, open });
+  }
+  const ordered = [
+    ...sortPinnedThreadsForSidebar(sections.pinned),
+    ...(activeOrder.kind === "inbox"
+      ? sortInboxThreadsByReturn(sections.active, activeOrder.returnedAt)
+      : activeOrder.kind === "send"
+        ? sortWorkingThreadsBySend(sections.active)
+        : sortThreadsForSidebar(sections.active)),
+    ...sortWorkingThreadsBySend(sections.working),
+    ...sections.snoozed.toSorted(
+      (left, right) =>
+        firstValidTimestampMs(left.snoozedUntil ?? null) -
+        firstValidTimestampMs(right.snoozedUntil ?? null),
+    ),
+    ...sortSettledThreads(sections.settled),
+  ];
+  return ordered.map((thread) => entries.get(thread)!);
 }
 
 /** Still running a turn, setting one up, or waiting on background work or a child thread. */
@@ -107,8 +161,4 @@ export function isRepeatSettlePress(last: LobbyPress | null, press: LobbyPress):
 export function clampLobbyCardWidth(width: number): number {
   if (!Number.isFinite(width)) return LOBBY_CARD_WIDTH_DEFAULT;
   return Math.min(LOBBY_CARD_WIDTH_MAX, Math.max(LOBBY_CARD_WIDTH_MIN, Math.round(width)));
-}
-
-function comparePlain(left: string, right: string) {
-  return left < right ? -1 : left > right ? 1 : 0;
 }

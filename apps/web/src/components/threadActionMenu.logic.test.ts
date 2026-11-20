@@ -35,7 +35,12 @@ describe("buildThreadActionMenuItems", () => {
         isPinned: reversed,
         isSettled: reversed,
         isSnoozed: reversed,
+        addedToLobby: reversed,
       });
+      // The lobby is this browser's own view, so a read-only connection still edits it.
+      const lobbyItem = items.find((item) => item.id === (reversed ? "lobby-remove" : "lobby-add"));
+      expect(lobbyItem).toBeDefined();
+      expect(lobbyItem?.disabled).toBeFalsy();
       const expected = reversed
         ? [
             "unpin",

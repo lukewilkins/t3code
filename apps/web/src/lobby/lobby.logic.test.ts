@@ -6,6 +6,8 @@ import {
   adjacentLobbyCardIndex,
   clampLobbyCardWidth,
   isRepeatSettlePress,
+  type LobbyActiveOrder,
+  lobbyThreadKey,
   selectLobbyThreads,
 } from "./lobby.logic";
 
@@ -17,50 +19,133 @@ const thread = (id: string, overrides: Parameters<typeof makeThreadFixture>[0] =
 
 const ids = (threads: ReadonlyArray<{ id: string }>) => threads.map((entry) => entry.id);
 
+const MANUAL: LobbyActiveOrder = { kind: "manual" };
+
+const select = (
+  threads: ReadonlyArray<ReturnType<typeof thread>>,
+  options: {
+    showWorking?: boolean;
+    added?: ReadonlyArray<string>;
+    activeOrder?: LobbyActiveOrder;
+  } = {},
+) =>
+  selectLobbyThreads({
+    threads,
+    delegatedUnderParent: new Set(),
+    now: NOW,
+    showWorking: options.showWorking ?? true,
+    addedKeys: new Set(
+      (options.added ?? []).map((id) => lobbyThreadKey({ environmentId, id: ThreadId.make(id) })),
+    ),
+    activeOrder: options.activeOrder ?? MANUAL,
+  });
+
+const entryIds = (entries: ReadonlyArray<{ thread: { id: string } }>) =>
+  ids(entries.map((entry) => entry.thread));
+
 describe("selectLobbyThreads", () => {
+  const parked = [
+    thread("open"),
+    thread("settled", { settledOverride: "settled", settledAt: NOW }),
+    thread("archived", { archivedAt: NOW }),
+    thread("deleted", { deletedAt: NOW }),
+    { ...thread("snoozed"), snoozedUntil: "2026-03-10T00:00:00.000Z" },
+    { ...thread("snooze-over"), snoozedUntil: "2026-03-09T11:00:00.000Z" },
+    thread("subagent", {
+      lineage: {
+        rootThreadId: ThreadId.make("open"),
+        parentThreadId: ThreadId.make("open"),
+        relationshipToParent: "subagent",
+      },
+    }),
+  ];
+
   it("keeps only open, listed threads and leaves out parked ones", () => {
-    const threads = [
-      thread("open"),
-      thread("settled", { settledOverride: "settled", settledAt: NOW }),
-      thread("archived", { archivedAt: NOW }),
-      thread("deleted", { deletedAt: NOW }),
-      { ...thread("snoozed"), snoozedUntil: "2026-03-10T00:00:00.000Z" },
-      { ...thread("snooze-over"), snoozedUntil: "2026-03-09T11:00:00.000Z" },
-      thread("subagent", {
-        lineage: {
-          rootThreadId: ThreadId.make("open"),
-          parentThreadId: ThreadId.make("open"),
-          relationshipToParent: "subagent",
-        },
-      }),
-    ];
-    const selected = selectLobbyThreads({
-      threads,
-      delegatedUnderParent: new Set(),
-      now: NOW,
-      showWorking: true,
-    });
-    expect(ids(selected)).toEqual(["open", "snooze-over"]);
+    expect(entryIds(select(parked))).toEqual(["open", "snooze-over"]);
   });
 
-  it("puts pinned threads first in pin order, then the rest oldest first", () => {
+  it("brings in parked threads added by hand, but never archived or deleted ones", () => {
+    const entries = select(parked, { added: ["settled", "snoozed", "archived", "deleted"] });
+    expect(entries.map(({ thread: { id }, added, open }) => ({ id, added, open }))).toEqual([
+      { id: "open", added: false, open: true },
+      { id: "snooze-over", added: false, open: true },
+      { id: "snoozed", added: true, open: false },
+      { id: "settled", added: true, open: false },
+    ]);
+  });
+
+  it("follows the sidebar's sections: pinned, inbox newest first, working, then settled", () => {
     const threads = [
-      { ...thread("newest"), createdAt: "2026-03-09T10:03:00.000Z" },
+      {
+        ...thread("done-old"),
+        settledOverride: "settled" as const,
+        settledAt: "2026-03-09T09:00:00.000Z",
+      },
+      { ...thread("older"), createdAt: "2026-03-09T10:01:00.000Z" },
       { ...thread("pinned-b"), pinnedAt: NOW, pinOrderKey: "b" },
-      { ...thread("oldest"), createdAt: "2026-03-09T10:01:00.000Z" },
+      { ...thread("busy"), createdAt: "2026-03-09T10:05:00.000Z" },
+      {
+        ...thread("done-new"),
+        settledOverride: "settled" as const,
+        settledAt: "2026-03-09T09:30:00.000Z",
+      },
+      { ...thread("newest"), createdAt: "2026-03-09T10:03:00.000Z" },
       { ...thread("pinned-a"), pinnedAt: NOW, pinOrderKey: "a" },
-      { ...thread("middle"), createdAt: "2026-03-09T10:02:00.000Z" },
     ];
-    const selected = selectLobbyThreads({
-      threads,
-      delegatedUnderParent: new Set(),
-      now: NOW,
-      showWorking: true,
-    });
-    expect(ids(selected)).toEqual(["pinned-a", "pinned-b", "oldest", "middle", "newest"]);
+    const activeOrder: LobbyActiveOrder = {
+      kind: "inbox",
+      isWorking: (candidate) => candidate.id === "busy",
+      returnedAt: () => undefined,
+    };
+    expect(entryIds(select(threads, { activeOrder, added: ["done-old", "done-new"] }))).toEqual([
+      "pinned-a",
+      "pinned-b",
+      "newest",
+      "older",
+      "busy",
+      "done-new",
+      "done-old",
+    ]);
   });
 
-  it("leaves out working threads unless showWorking, keeping ones that need the user", () => {
+  it.each([
+    { order: "manual", expected: ["keyless", "key-a", "key-b"] },
+    { order: "send", expected: ["key-b", "keyless", "key-a"] },
+    { order: "inbox", expected: ["key-a", "keyless", "key-b"] },
+  ] as const)("orders active threads as the sidebar's $order mode does", ({ order, expected }) => {
+    const threads = [
+      {
+        ...thread("key-b"),
+        createdAt: "2026-03-09T10:01:00.000Z",
+        activeOrderKey: "b",
+        latestUserAuthoredMessageAt: "2026-03-09T10:05:00.000Z",
+      },
+      {
+        ...thread("key-a"),
+        createdAt: "2026-03-09T10:02:00.000Z",
+        activeOrderKey: "a",
+        latestUserAuthoredMessageAt: "2026-03-09T10:03:00.000Z",
+      },
+      {
+        ...thread("keyless"),
+        createdAt: "2026-03-09T10:03:00.000Z",
+        latestUserAuthoredMessageAt: "2026-03-09T10:04:00.000Z",
+      },
+    ];
+    const activeOrder: LobbyActiveOrder =
+      order === "inbox"
+        ? {
+            kind: "inbox",
+            isWorking: () => false,
+            // Coming back from work counts as fresh activity, as in the sidebar's inbox.
+            returnedAt: (candidate) =>
+              candidate.id === "key-a" ? Date.parse("2026-03-09T10:10:00.000Z") : undefined,
+          }
+        : { kind: order };
+    expect(entryIds(select(threads, { activeOrder }))).toEqual(expected);
+  });
+
+  it("leaves out working threads unless showWorking or added, keeping ones that need the user", () => {
     const runtime = (status: "running" | "preparing" | "idle" | "completed" | "failed") => ({
       status,
       activeRunId: null,
@@ -79,10 +164,17 @@ describe("selectLobbyThreads", () => {
       { ...thread("failed"), runtime: runtime("failed") },
       thread("fresh"),
     ];
-    const select = (showWorking: boolean) =>
-      ids(selectLobbyThreads({ threads, delegatedUnderParent: new Set(), now: NOW, showWorking }));
-    expect(select(false)).toEqual(["approval", "completed", "failed", "fresh"]);
-    expect(select(true)).toHaveLength(threads.length);
+    const shown = (showWorking: boolean, added: ReadonlyArray<string> = []) =>
+      entryIds(select(threads, { showWorking, added })).toSorted();
+    expect(shown(false)).toEqual(["approval", "completed", "failed", "fresh"]);
+    expect(shown(false, ["running"])).toEqual([
+      "approval",
+      "completed",
+      "failed",
+      "fresh",
+      "running",
+    ]);
+    expect(shown(true)).toHaveLength(threads.length);
   });
 });
 
