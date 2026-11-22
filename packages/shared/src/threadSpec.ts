@@ -206,51 +206,122 @@ function diffOps(a: ReadonlyArray<string>, b: ReadonlyArray<string>): DiffOp[] {
   ];
 }
 
-const SIGN = { ctx: " ", del: "-", add: "+" } as const;
+const FENCE = /^ {0,3}(`{3,}|~{3,})/;
+const MATH_FENCE = /^\s*\$\$\s*$/;
+const HEADING = /^ {0,3}#{1,6}(?:\s|$)/;
+const LIST_ITEM = /^ {0,3}(?:[-*+]|\d{1,9}[.)])(?:\s|$)/;
+const QUOTE = /^ {0,3}>/;
+const RULE = /^ {0,3}([-*_])(?:[ \t]*\1){2,}[ \t]*$/;
+const isBlank = (line: string) => line.trim() === "";
+const isIndented = (line: string) => /^(?: {2,}|\t)/.test(line);
+const startsBlock = (line: string) =>
+  FENCE.test(line) ||
+  MATH_FENCE.test(line) ||
+  HEADING.test(line) ||
+  LIST_ITEM.test(line) ||
+  QUOTE.test(line) ||
+  RULE.test(line);
 
-/** A unified diff from `before` to `after`; "" when they're equal. */
-export function threadSpecUnifiedDiff(
-  before: string,
-  after: string,
-  fromLabel: string,
-  toLabel: string,
-  context = 3,
-): string {
-  if (before === after) return "";
+interface SpecBlock {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+}
+
+/**
+ * Top-level markdown blocks as line ranges: a fence, heading, rule, quote, paragraph or table, or
+ * one list item with everything nested under it. Each renders on its own like it does in place.
+ */
+function specBlocks(lines: ReadonlyArray<string>): SpecBlock[] {
+  const blocks: SpecBlock[] = [];
+  const at = (index: number) => lines[index] ?? "";
+  let i = 0;
+  while (i < lines.length) {
+    const line = at(i);
+    if (isBlank(line)) {
+      i++;
+      continue;
+    }
+    const start = i++;
+    const fence = FENCE.exec(line)?.[1];
+    if (fence !== undefined) {
+      const close = new RegExp(`^ {0,3}${fence[0] === "`" ? "`" : "~"}{${fence.length},}\\s*$`);
+      while (i < lines.length && !close.test(at(i))) i++;
+      i = Math.min(i + 1, lines.length);
+    } else if (MATH_FENCE.test(line)) {
+      while (i < lines.length && !MATH_FENCE.test(at(i))) i++;
+      i = Math.min(i + 1, lines.length);
+    } else if (HEADING.test(line) || RULE.test(line)) {
+      // One line.
+    } else if (QUOTE.test(line)) {
+      while (i < lines.length && QUOTE.test(at(i))) i++;
+    } else if (LIST_ITEM.test(line)) {
+      while (i < lines.length) {
+        const next = at(i);
+        if (isBlank(next)) {
+          let j = i;
+          while (j < lines.length && isBlank(at(j))) j++;
+          if (j < lines.length && isIndented(at(j))) i = j;
+          else break;
+        } else if (isIndented(next) || !startsBlock(next)) i++;
+        else break;
+      }
+    } else {
+      while (i < lines.length && !isBlank(at(i)) && !startsBlock(at(i))) i++;
+    }
+    let end = i;
+    while (end > start && isBlank(at(end - 1))) end--;
+    blocks.push({ start, end, text: lines.slice(start, end).join("\n") });
+  }
+  return blocks;
+}
+
+export interface ThreadSpecDiffChunk {
+  readonly kind: "same" | "added" | "removed";
+  /** 1-based first line in its revision: `before` for removed chunks, `after` for the rest. */
+  readonly line: number;
+  /** Source markdown of consecutive blocks, spacing kept, so lists stay tight and numbered. */
+  readonly markdown: string;
+}
+
+const CHUNK_KIND = { ctx: "same", add: "added", del: "removed" } as const;
+
+/**
+ * `before` to `after` as rendered-markdown chunks, diffed by top-level block so a changed block shows
+ * as its old version removed and its new one added. Empty when no block changed.
+ */
+export function threadSpecBlockDiff(before: string, after: string): ThreadSpecDiffChunk[] {
+  const beforeLines = before.split("\n");
+  const afterLines = after.split("\n");
+  const a = specBlocks(beforeLines);
+  const b = specBlocks(afterLines);
   const ops = diffOps(
-    before === "" ? [] : before.split("\n"),
-    after === "" ? [] : after.split("\n"),
+    a.map((block) => block.text),
+    b.map((block) => block.text),
   );
-  const hunks: Array<[number, number]> = [];
-  ops.forEach((op, index) => {
-    if (op.kind === "ctx") return;
-    const start = Math.max(0, index - context);
-    const end = Math.min(ops.length - 1, index + context);
-    const lastHunk = hunks.at(-1);
-    if (lastHunk && start <= lastHunk[1] + 1) lastHunk[1] = Math.max(lastHunk[1], end);
-    else hunks.push([start, end]);
-  });
-  const posA: number[] = [];
-  const posB: number[] = [];
-  let lineA = 1;
-  let lineB = 1;
+  if (ops.every((op) => op.kind === "ctx")) return [];
+  const runs: Array<{ kind: DiffOp["kind"]; blocks: SpecBlock[] }> = [];
+  let inA = 0;
+  let inB = 0;
   for (const op of ops) {
-    posA.push(lineA);
-    posB.push(lineB);
-    if (op.kind !== "add") lineA++;
-    if (op.kind !== "del") lineB++;
+    const block = op.kind === "del" ? a[inA] : b[inB];
+    if (op.kind !== "add") inA++;
+    if (op.kind !== "del") inB++;
+    if (block === undefined) continue;
+    const last = runs.at(-1);
+    if (last?.kind === op.kind) last.blocks.push(block);
+    else runs.push({ kind: op.kind, blocks: [block] });
   }
-  const out = [`--- ${fromLabel}`, `+++ ${toLabel}`];
-  for (const [start, end] of hunks) {
-    const slice = ops.slice(start, end + 1);
-    const oldCount = slice.filter((op) => op.kind !== "add").length;
-    const newCount = slice.filter((op) => op.kind !== "del").length;
-    const oldStart = (posA[start] ?? 1) - (oldCount ? 0 : 1);
-    const newStart = (posB[start] ?? 1) - (newCount ? 0 : 1);
-    out.push(`@@ -${oldStart},${oldCount} +${newStart},${newCount} @@`);
-    for (const op of slice) out.push(SIGN[op.kind] + op.text);
-  }
-  return out.join("\n");
+  return runs.map(({ kind, blocks }) => {
+    const start = blocks[0]?.start ?? 0;
+    return {
+      kind: CHUNK_KIND[kind],
+      line: start + 1,
+      markdown: (kind === "del" ? beforeLines : afterLines)
+        .slice(start, blocks.at(-1)?.end ?? 0)
+        .join("\n"),
+    };
+  });
 }
 
 const isHeading = (line: string) => /^#{1,6}\s/.test(line);
@@ -298,12 +369,4 @@ export function threadSpecGoal(spec: string): string {
     .slice(start + 1, end)
     .join("\n")
     .trim();
-}
-
-/** A fenced diff block, with a fence longer than any backtick run inside so spec text can't close it early. */
-export function fencedDiffMarkdown(diff: string): string {
-  let longest = 2;
-  for (const run of diff.match(/`+/g) ?? []) longest = Math.max(longest, run.length);
-  const fence = "`".repeat(longest + 1);
-  return `${fence}diff\n${diff.replace(/\n$/, "")}\n${fence}`;
 }

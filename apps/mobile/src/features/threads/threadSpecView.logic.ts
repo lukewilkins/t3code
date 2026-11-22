@@ -1,4 +1,4 @@
-import { fencedDiffMarkdown, threadSpecUnifiedDiff } from "@t3tools/shared/threadSpec";
+import { threadSpecBlockDiff, type ThreadSpecDiffChunk } from "@t3tools/shared/threadSpec";
 
 /** Which request a Retry button in the spec pane re-runs. */
 export type ThreadSpecRetry = "live" | "shown" | "previous";
@@ -8,7 +8,8 @@ export type ThreadSpecContent =
   | { readonly kind: "error"; readonly message: string; readonly retry: ThreadSpecRetry }
   | { readonly kind: "empty" }
   | { readonly kind: "unchanged" }
-  | { readonly kind: "markdown"; readonly text: string };
+  | { readonly kind: "markdown"; readonly text: string }
+  | { readonly kind: "diff"; readonly chunks: ReadonlyArray<ThreadSpecDiffChunk> };
 
 /**
  * What the spec pane shows. `shown` and `previous` are revision numbers (null when there is none);
@@ -44,11 +45,6 @@ export function resolveThreadSpecContent(input: {
       ? { kind: "loading" }
       : { kind: "error", message: input.previousError, retry: "previous" };
   }
-  const diff = threadSpecUnifiedDiff(
-    input.previousBody,
-    input.shownBody,
-    `r${input.previous}`,
-    `r${input.shown}`,
-  );
-  return diff === "" ? { kind: "unchanged" } : { kind: "markdown", text: fencedDiffMarkdown(diff) };
+  const chunks = threadSpecBlockDiff(input.previousBody, input.shownBody);
+  return chunks.length === 0 ? { kind: "unchanged" } : { kind: "diff", chunks };
 }

@@ -10,6 +10,7 @@ import { AppText as Text } from "../../components/ui/AppText";
 import { Button } from "../../components/ui/Button";
 import { Chip } from "../../components/ui/Chip";
 import { IconButton } from "../../components/ui/IconButton";
+import { cn } from "../../lib/cn";
 import { useEnvironmentQuery } from "../../state/query";
 import { threadSpecEnvironment } from "../../state/threadSpec";
 import { resolveThreadSpecContent } from "./threadSpecView.logic";
@@ -130,6 +131,36 @@ export function ThreadSpecView(props: {
       >
         {content.kind === "markdown" ? (
           props.renderMarkdown(content.text)
+        ) : content.kind === "diff" ? (
+          <View className="gap-3">
+            {content.chunks.map((chunk) =>
+              chunk.kind === "same" ? (
+                <View key={`${chunk.kind}:${chunk.line}`}>
+                  {props.renderMarkdown(chunk.markdown)}
+                </View>
+              ) : (
+                <View
+                  key={`${chunk.kind}:${chunk.line}`}
+                  className={cn(
+                    "flex-row rounded-r-md border-l-2 py-2 pr-3",
+                    chunk.kind === "added"
+                      ? "border-green-500 bg-green-500/10"
+                      : "border-red-500 bg-red-500/10",
+                  )}
+                >
+                  <Text
+                    className={cn(
+                      "w-6 text-center font-mono text-sm",
+                      chunk.kind === "added" ? "text-green-500" : "text-red-500",
+                    )}
+                  >
+                    {chunk.kind === "added" ? "+" : "−"}
+                  </Text>
+                  <View className="min-w-0 flex-1">{props.renderMarkdown(chunk.markdown)}</View>
+                </View>
+              ),
+            )}
+          </View>
         ) : (
           <View className="flex-1 items-center justify-center gap-3 px-6 py-10">
             {content.kind === "loading" ? (

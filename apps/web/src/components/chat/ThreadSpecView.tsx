@@ -6,11 +6,12 @@ import type {
   ThreadSpecRevisionAuthor,
 } from "@t3tools/contracts";
 import type { CodexArtifactTemplate } from "@t3tools/shared/codexArtifactTemplates";
-import { fencedDiffMarkdown, threadSpecUnifiedDiff } from "@t3tools/shared/threadSpec";
+import { threadSpecBlockDiff, type ThreadSpecDiffChunk } from "@t3tools/shared/threadSpec";
 import { msg, useGT, useMessages } from "gt-react";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { useState } from "react";
 
+import { cn } from "~/lib/utils";
 import { useEnvironmentQuery } from "../../state/query";
 import { threadSpecEnvironment } from "../../state/threadSpec";
 import { formatRelativeTimeLabel } from "../../timestampFormat";
@@ -95,7 +96,7 @@ export function ThreadSpecView(props: ThreadSpecViewProps) {
     shown !== null &&
     shownBody !== null &&
     previousBody !== null
-      ? threadSpecUnifiedDiff(previousBody, shownBody, `r${previous}`, `r${shown}`)
+      ? threadSpecBlockDiff(previousBody, shownBody)
       : null;
 
   const shownInfo = revisions.find((entry) => entry.revision === shown);
@@ -161,12 +162,12 @@ export function ThreadSpecView(props: ThreadSpecViewProps) {
             <EmptyDescription>{previousQuery.error}</EmptyDescription>
           </CenteredNote>
         )
-      ) : diff === null || diff === "" ? (
+      ) : diff === null || diff.length === 0 ? (
         <CenteredNote>
           <EmptyDescription>{gt("This revision made no changes.")}</EmptyDescription>
         </CenteredNote>
       ) : (
-        <SpecMarkdown {...props} text={fencedDiffMarkdown(diff)} />
+        <SpecDiff {...props} chunks={diff} />
       );
   } else {
     content = <SpecMarkdown {...props} text={shownBody} />;
@@ -283,6 +284,61 @@ function CenteredNote({
       <EmptyHeader>{children}</EmptyHeader>
       {action ? <EmptyContent>{action}</EmptyContent> : null}
     </Empty>
+  );
+}
+
+const DIFF_CHUNK_STYLES = {
+  added: {
+    Tag: "ins",
+    sign: "+",
+    className: "border-diff-addition bg-diff-addition/8 dark:bg-diff-addition/14",
+    signClassName: "text-diff-addition-foreground",
+  },
+  removed: {
+    Tag: "del",
+    sign: "−",
+    className: "border-diff-deletion bg-diff-deletion/8 dark:bg-diff-deletion/16",
+    signClassName: "text-diff-deletion-foreground",
+  },
+} as const;
+
+/** The change rendered in place: unchanged blocks as usual, removed and added ones tinted with a gutter sign. */
+function SpecDiff({
+  chunks,
+  ...props
+}: ThreadSpecViewProps & { readonly chunks: ReadonlyArray<ThreadSpecDiffChunk> }) {
+  return (
+    <div className="flex flex-col gap-3" data-chat-spec-diff>
+      {chunks.map((chunk) => {
+        if (chunk.kind === "same") {
+          return (
+            <SpecMarkdown key={`${chunk.kind}:${chunk.line}`} {...props} text={chunk.markdown} />
+          );
+        }
+        const style = DIFF_CHUNK_STYLES[chunk.kind];
+        return (
+          <style.Tag
+            key={`${chunk.kind}:${chunk.line}`}
+            data-spec-diff-chunk={chunk.kind}
+            className={cn(
+              "relative block rounded-r-md border-l-2 py-2 pr-3 pl-7 no-underline",
+              style.className,
+            )}
+          >
+            <span
+              aria-hidden
+              className={cn(
+                "absolute top-2 left-2.5 font-mono text-sm leading-6 select-none",
+                style.signClassName,
+              )}
+            >
+              {style.sign}
+            </span>
+            <SpecMarkdown {...props} text={chunk.markdown} />
+          </style.Tag>
+        );
+      })}
+    </div>
   );
 }
 

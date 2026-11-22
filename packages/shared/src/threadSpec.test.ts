@@ -2,12 +2,11 @@ import { describe, expect, it } from "vite-plus/test";
 
 import {
   applyThreadSpecEdits,
-  fencedDiffMarkdown,
   numberSpecLines,
   ThreadSpecEditError,
   threadSpecChangedSections,
   threadSpecGoal,
-  threadSpecUnifiedDiff,
+  threadSpecBlockDiff,
 } from "./threadSpec.ts";
 
 const refusal = (run: () => unknown) => {
@@ -159,33 +158,63 @@ describe("threadSpecChangedSections", () => {
   });
 });
 
-describe("threadSpecUnifiedDiff", () => {
-  it("is empty for equal text", () => {
-    expect(threadSpecUnifiedDiff("a\nb", "a\nb", "r1", "r2")).toBe("");
+describe("threadSpecBlockDiff", () => {
+  it("is empty when no block changed, even if blank lines did", () => {
+    expect(threadSpecBlockDiff("# A\n\nx", "# A\n\nx")).toEqual([]);
+    expect(threadSpecBlockDiff("# A\nx", "# A\n\n\nx")).toEqual([]);
   });
 
-  it("prints git-style hunk headers with deletions before additions", () => {
-    expect(threadSpecUnifiedDiff("a\nb\nc", "a\nB\nc", "r1", "r2")).toBe(
-      ["--- r1", "+++ r2", "@@ -1,3 +1,3 @@", " a", "-b", "+B", " c"].join("\n"),
-    );
+  it("shows a changed block as removed then added between unchanged runs", () => {
+    expect(threadSpecBlockDiff("# A\n\nold\n\n# B", "# A\n\nnew\n\n# B")).toEqual([
+      { kind: "same", line: 1, markdown: "# A" },
+      { kind: "removed", line: 3, markdown: "old" },
+      { kind: "added", line: 3, markdown: "new" },
+      { kind: "same", line: 5, markdown: "# B" },
+    ]);
   });
 
-  it("starts an all-added diff at line 0 on the empty side", () => {
-    expect(threadSpecUnifiedDiff("", "a\nb", "r0", "r1")).toBe(
-      ["--- r0", "+++ r1", "@@ -0,0 +1,2 @@", "+a", "+b"].join("\n"),
-    );
-    expect(threadSpecUnifiedDiff("a\nb", "", "r1", "r2")).toBe(
-      ["--- r1", "+++ r2", "@@ -1,2 +0,0 @@", "-a", "-b"].join("\n"),
-    );
+  it("keeps a tight list tight and its numbering when one item changes", () => {
+    expect(threadSpecBlockDiff("1. a\n2. b\n3. c", "1. a\n2. B\n3. c")).toEqual([
+      { kind: "same", line: 1, markdown: "1. a" },
+      { kind: "removed", line: 2, markdown: "2. b" },
+      { kind: "added", line: 2, markdown: "2. B" },
+      { kind: "same", line: 3, markdown: "3. c" },
+    ]);
   });
 
-  it("splits distant changes into separate hunks", () => {
-    const lines = Array.from({ length: 20 }, (_, i) => `l${i + 1}`);
-    const changed = lines.map((line, i) => (i === 0 || i === 19 ? `${line}!` : line));
-    const hunks = threadSpecUnifiedDiff(lines.join("\n"), changed.join("\n"), "a", "b")
-      .split("\n")
-      .filter((line) => line.startsWith("@@"));
-    expect(hunks).toEqual(["@@ -1,4 +1,4 @@", "@@ -17,4 +17,4 @@"]);
+  it("merges neighbouring unchanged blocks into one chunk with their spacing", () => {
+    const chunks = threadSpecBlockDiff("- a\n- b\n\npara", "- a\n- b\n\npara\n\nnew");
+    expect(chunks).toEqual([
+      { kind: "same", line: 1, markdown: "- a\n- b\n\npara" },
+      { kind: "added", line: 6, markdown: "new" },
+    ]);
+  });
+
+  it("carries nested lines and lazy continuations with their list item", () => {
+    const before = "- parent\n  - child\ncontinued\n- next";
+    const after = "- parent\n  - child!\ncontinued\n- next";
+    expect(threadSpecBlockDiff(before, after)).toEqual([
+      { kind: "removed", line: 1, markdown: "- parent\n  - child\ncontinued" },
+      { kind: "added", line: 1, markdown: "- parent\n  - child!\ncontinued" },
+      { kind: "same", line: 4, markdown: "- next" },
+    ]);
+  });
+
+  it("keeps a fence whole across blank lines and markdown-looking lines inside it", () => {
+    const fence = (body: string) => `\`\`\`\`md\n# not a heading\n\n\`\`\`\n${body}\n\`\`\`\``;
+    expect(threadSpecBlockDiff(`${fence("x")}\n\nafter`, `${fence("y")}\n\nafter`)).toEqual([
+      { kind: "removed", line: 1, markdown: fence("x") },
+      { kind: "added", line: 1, markdown: fence("y") },
+      { kind: "same", line: 8, markdown: "after" },
+    ]);
+  });
+
+  it("ends a paragraph at a heading with no blank line between", () => {
+    expect(threadSpecBlockDiff("text\n## H", "text\n## H2")).toEqual([
+      { kind: "same", line: 1, markdown: "text" },
+      { kind: "removed", line: 2, markdown: "## H" },
+      { kind: "added", line: 2, markdown: "## H2" },
+    ]);
   });
 });
 
@@ -200,17 +229,5 @@ describe("threadSpecGoal and numberSpecLines", () => {
     expect(
       numberSpecLines(Array.from({ length: 10_000 }, () => "x").join("\n")).split("\n")[0],
     ).toBe("    1\tx");
-  });
-});
-
-describe("fencedDiffMarkdown", () => {
-  it("wraps a diff in a diff fence without a blank trailing line", () => {
-    expect(fencedDiffMarkdown("-a\n+b\n")).toBe("```diff\n-a\n+b\n```");
-  });
-
-  it("widens the fence past backtick runs in the spec text", () => {
-    const fenced = fencedDiffMarkdown("+```ts\n+x\n+```");
-    expect(fenced.startsWith("````diff\n")).toBe(true);
-    expect(fenced.endsWith("\n````")).toBe(true);
   });
 });

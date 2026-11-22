@@ -47,9 +47,15 @@ describe("resolveThreadSpecContent", () => {
     });
   });
 
-  it("renders the change as a diff fence, waiting on the previous body", () => {
-    const diff = resolveThreadSpecContent({ ...base, showChanges: true });
-    expect(diff.kind === "markdown" && diff.text.startsWith("```diff\n--- r1\n+++ r2")).toBe(true);
+  it("renders the change as block chunks, waiting on the previous body", () => {
+    expect(resolveThreadSpecContent({ ...base, showChanges: true })).toEqual({
+      kind: "diff",
+      chunks: [
+        { kind: "same", line: 1, markdown: "# Spec" },
+        { kind: "removed", line: 2, markdown: "old" },
+        { kind: "added", line: 2, markdown: "new" },
+      ],
+    });
     expect(resolveThreadSpecContent({ ...base, showChanges: true, previousBody: null })).toEqual({
       kind: "loading",
     });
