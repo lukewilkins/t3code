@@ -4,7 +4,11 @@ import { cn } from "~/lib/utils";
 import { ComposerChromeContext } from "./composerChrome";
 
 // A minimal composer sits flush in its host (a lobby card): no radius or shadow, only a top rule.
-const FLUSH_SHELL = "before:rounded-none";
+// Its attached banners (a pending question) span the full width the same way.
+const FLUSH_SHELL = cn(
+  "before:rounded-none [--chat-composer-drawer-inset:0rem]",
+  "**:data-[composer-banner-surface=attached]:before:rounded-none **:data-[composer-banner-surface=attached]:before:border-x-0 **:data-[composer-banner-surface=attached]:before:shadow-none!",
+);
 // `!`: tailwind-merge reads shadow-composer as a color, so it would keep both shadows.
 const FLUSH_OUTLINE = "rounded-none after:border-0 after:border-t";
 const FLUSH_SURFACE = `${FLUSH_OUTLINE} shadow-none! dark:after:inset-shadow-none group-data-context-row/composer-surface:before:rounded-none`;
