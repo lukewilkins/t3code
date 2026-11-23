@@ -23,7 +23,7 @@ import * as Stream from "effect/Stream";
 import * as Orchestrator from "../orchestration-v2/Orchestrator.ts";
 import * as ProjectionStore from "../orchestration-v2/ProjectionStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
-import Migration0104 from "../persistence/Migrations/104_PipelineRuns.ts";
+import Migration0104 from "../persistence/Migrations/112_PipelineRuns.ts";
 import * as PipelineRuns from "../persistence/PipelineRuns.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as PipelineService from "./PipelineService.ts";

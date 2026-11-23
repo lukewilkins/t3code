@@ -130,7 +130,7 @@ export const LobbyCard = memo(function LobbyCard(props: {
   const routeParams = buildThreadRouteParams(threadRef);
   const openThread = () => void navigate({ to: "/$environmentId/$threadId", params: routeParams });
   // The timeline would act on its own links and buttons; in a card it only opens the thread.
-  const parentPanel = { openToolDiff: openThread, runShellCommand: openThread };
+  const parentPanel = { hostRef: threadRef, openToolDiff: openThread, runShellCommand: openThread };
 
   // Timeline menus and popovers open on press, before any click; keep the press from them.
   const onPressCapture = (event: ReactPointerEvent<HTMLElement> | ReactMouseEvent<HTMLElement>) => {

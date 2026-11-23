@@ -5,8 +5,8 @@ import * as Migrator from "effect/sql/Migrator";
 import * as SqlClient from "effect/sql/SqlClient";
 
 import { migrationManifest, runMigrations } from "./Migrations.ts";
-import ThreadSpecRevisions from "./Migrations/103_ThreadSpecRevisions.ts";
-import PipelineRuns from "./Migrations/104_PipelineRuns.ts";
+import ThreadSpecRevisions from "./Migrations/111_ThreadSpecRevisions.ts";
+import PipelineRuns from "./Migrations/112_PipelineRuns.ts";
 
 it.effect("moves fork migrations recorded at upstream's ids above them, keeping their data", () =>
   Effect.gen(function* () {

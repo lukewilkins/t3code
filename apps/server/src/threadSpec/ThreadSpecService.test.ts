@@ -21,7 +21,7 @@ import * as ServerConfig from "../config.ts";
 import * as ProjectStore from "../orchestration-v2/ProjectStore.ts";
 import * as ThreadManagementService from "../orchestration-v2/ThreadManagementService.ts";
 import { ThreadSpecConflictError } from "../persistence/Errors.ts";
-import Migration0103 from "../persistence/Migrations/103_ThreadSpecRevisions.ts";
+import Migration0103 from "../persistence/Migrations/111_ThreadSpecRevisions.ts";
 import * as ThreadSpecRevisions from "../persistence/ThreadSpecRevisions.ts";
 import * as ServerSettings from "../serverSettings.ts";
 import * as TextGeneration from "../textGeneration/TextGeneration.ts";
